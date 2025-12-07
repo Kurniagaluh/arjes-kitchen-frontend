@@ -1,107 +1,147 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
+// 1. Buat Context
 const CartContext = createContext();
 
+// 2. Buat Provider
 export const CartProvider = ({ children }) => {
-  const [cart, setCart] = useState([]); // [ {id, name, price, qty} ]
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [vouchers, setVouchers] = useState([]); 
-  const [activeVoucher, setActiveVoucher] = useState(null); 
-
-  useEffect(() => {
+  // --- STATE ---
+  // Ambil data dari LocalStorage saat awal load (biar tidak hilang pas refresh)
+  const [cart, setCart] = useState(() => {
     const savedCart = localStorage.getItem('arjes_cart');
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
-    }
-  }, []);
+    return savedCart ? JSON.parse(savedCart) : [];
+  });
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Untuk sidebar keranjang
+  const [activeVoucher, setActiveVoucher] = useState(null);  // Untuk simpan voucher yg dipakai
+
+  // Simpan ke LocalStorage setiap kali cart berubah
   useEffect(() => {
     localStorage.setItem('arjes_cart', JSON.stringify(cart));
   }, [cart]);
 
 
-  // --- Fungsi Utama Cart ---
-  const addToCart = (item) => {
-    const existingItem = cart.find(cartItem => cartItem.id === item.id);
-    const price = Number(item.price);
-    if (isNaN(price)) {
-        console.error("Harga item tidak valid:", item.price);
-        alert("Harga item tidak valid!");
-        return;
-    }
+  // --- FUNGSI AKSI (ACTIONS) ---
 
-    if (existingItem) {
-      setCart(cart.map(cartItem =>
-        cartItem.id === item.id ? { ...cartItem, qty: cartItem.qty + 1 } : cartItem
-      ));
-    } else {
-      setCart([...cart, { ...item, price: price, qty: 1 }]);
-    }
-    setIsSidebarOpen(true); 
+  // A. Tambah Item (Add to Cart)
+  const addToCart = (product) => {
+    const price = Number(product.price); // Wajib dikonversi ke Angka biar aman
+
+    setCart((prevCart) => {
+      // Cek apakah item sudah ada?
+      const existingItem = prevCart.find((item) => item.id === product.id);
+
+      if (existingItem) {
+        // Kalau sudah ada, tambah jumlahnya (qty + 1)
+        return prevCart.map((item) =>
+          item.id === product.id
+            ? { ...item, qty: item.qty + 1 }
+            : item
+        );
+      } else {
+        // Kalau belum ada, masukkan item baru dengan qty 1
+        return [...prevCart, { ...product, price: price, qty: 1 }];
+      }
+    });
+
+    // Buka sidebar/notifikasi otomatis (opsional)
+    // setIsSidebarOpen(true); 
+    // alert(`${product.name} berhasil masuk keranjang!`);
   };
 
+  // B. Kurangi Item (Tombol Minus)
+  const decreaseQty = (itemId) => {
+    setCart((prevCart) => {
+      return prevCart.map(item => {
+        if (item.id === itemId) {
+          return { ...item, qty: item.qty - 1 };
+        }
+        return item;
+      }).filter(item => item.qty > 0); // Jika 0, otomatis dihapus
+    });
+  };
+
+  // C. Hapus Item (Tombol Sampah)
   const removeFromCart = (itemId) => {
-    setCart(cart.filter(item => item.id !== itemId));
+    setCart((prevCart) => prevCart.filter((item) => item.id !== itemId));
   };
 
-  const updateQuantity = (itemId, newQuantity) => {
-    if (newQuantity <= 0) {
-      removeFromCart(itemId);
-      return;
-    }
-    setCart(cart.map(cartItem =>
-      cartItem.id === itemId ? { ...cartItem, qty: newQuantity } : cartItem
-    ));
-  };
-  
+  // D. Kosongkan Keranjang (Reset)
   const clearCart = () => {
     setCart([]);
-    setActiveVoucher(null);
+    setActiveVoucher(null); // Reset voucher juga
+    localStorage.removeItem('arjes_cart');
   };
 
-  // --- Fungsi Perhitungan ---
+
+  // --- FUNGSI PERHITUNGAN (CALCULATIONS) ---
+  // Ini dihitung otomatis setiap ada perubahan state, jadi tidak perlu useEffect manual.
+
+  // 1. Hitung Subtotal (Harga Asli Barang)
   const calculateSubtotal = cart.reduce((total, item) => total + (item.price * item.qty), 0);
-  
+
+  // 2. Hitung Nilai Diskon
   const calculateDiscount = () => {
     if (!activeVoucher) return 0;
+    
+    // Jika tipe persen (contoh 0.10 untuk 10%)
     if (activeVoucher.type === 'percentage') {
         return calculateSubtotal * activeVoucher.value; 
     }
+    // Jika tipe potongan tetap (contoh Rp 15.000)
     if (activeVoucher.type === 'fixed') {
         return activeVoucher.value;
     }
     return 0;
   };
 
-  const calculateTotal = calculateSubtotal - calculateDiscount();
+  const discountAmount = calculateDiscount();
+
+  // 3. Hitung Total Akhir (Bayar)
+  const calculateTotal = calculateSubtotal - discountAmount;
 
 
-  // --- Fungsi Voucher (Integrasi ke Backend di tahap berikutnya) ---
-  const applyVoucher = (voucherCode) => {
-    // Simulasi Cek Voucher (Nanti ganti API POST /api/voucher/check)
-    if (voucherCode === "UNSPROMO") {
-      setActiveVoucher({ code: voucherCode, type: 'percentage', value: 0.10, name: "Diskon 10% Mahasiswa" });
-      alert("Voucher berhasil diterapkan! (Contoh)");
-    } else {
+  // --- VOUCHER LOGIC ---
+  const applyVoucher = (code) => {
+    // Simulasi Logic Voucher (Nanti diganti API ke Backend)
+    const upperCode = code.toUpperCase();
+
+    if (upperCode === "ARJES20") {
+      setActiveVoucher({ code: "ARJES20", type: 'percentage', value: 0.20, name: "Diskon Opening 20%" });
+      alert("Voucher ARJES20 berhasil dipakai!");
+    } 
+    else if (upperCode === "PICKUPHEMAT") {
+      setActiveVoucher({ code: "PICKUPHEMAT", type: 'fixed', value: 15000, name: "Potongan Rp 15.000" });
+      alert("Voucher PICKUPHEMAT berhasil dipakai!");
+    } 
+    else {
       setActiveVoucher(null);
-      alert("Voucher tidak valid! (Coba UNSPROMO)");
+      alert("Kode voucher tidak valid.");
     }
   };
 
+
+  // --- RETURN PROVIDER ---
   return (
     <CartContext.Provider value={{
+      // Data State
       cart,
-      addToCart,
-      removeFromCart,
-      updateQuantity,
-      clearCart,
-      calculateSubtotal,
-      calculateTotal,
       isSidebarOpen,
       setIsSidebarOpen,
-      vouchers,
       activeVoucher,
-      calculateDiscount,
+
+      // Aksi Cart
+      addToCart,
+      decreaseQty,     // Gunakan ini untuk tombol (-)
+      removeFromCart,  // Gunakan ini untuk tombol Hapus/Sampah
+      clearCart,
+      
+      // Data Angka (Hasil Perhitungan)
+      subtotal: calculateSubtotal, // Mengirim NILAI (Angka), bukan fungsi
+      discount: discountAmount,    // Mengirim NILAI (Angka)
+      total: calculateTotal,       // Mengirim NILAI (Angka)
+
+      // Voucher
       applyVoucher
     }}>
       {children}
@@ -109,4 +149,5 @@ export const CartProvider = ({ children }) => {
   );
 };
 
+// 3. Custom Hook biar gampang dipanggil
 export const useCart = () => useContext(CartContext);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, ArrowUpRight, Coffee } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowUpRight, Coffee } from 'lucide-react';
+import { Link } from 'react-router-dom'; // PENTING: Import ini biar tombolnya jalan
 
 const menuItems = [
   {
@@ -9,7 +10,7 @@ const menuItems = [
     name: "Kopi Susu Gula Aren",
     price: "18K",
     desc: "Perpaduan espresso robusta lampung dengan gula aren organik.",
-    image: "/images/kopi1.jpg", // Pastikan gambar ada di public/images
+    image: "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800&q=80", 
     bg: "bg-[#1A2F23]"
   },
   {
@@ -18,7 +19,7 @@ const menuItems = [
     name: "Nasi Goreng Arjes",
     price: "25K",
     desc: "Nasi goreng rempah rahasia dengan topping sosis & telur mata sapi.",
-    image: "/images/nasigoreng.jpg",
+    image: "https://images.unsplash.com/photo-1603133872878-684f57143988?w=800&q=80",
     bg: "bg-[#243E30]"
   },
   {
@@ -27,7 +28,7 @@ const menuItems = [
     name: "Matcha Latte",
     price: "24K",
     desc: "Pure Matcha dari Kyoto dicampur susu segar creamy.",
-    image: "/images/matcha.jpg",
+    image: "https://images.unsplash.com/photo-1515825838458-f2a94b20105a?w=800&q=80",
     bg: "bg-[#2F4F3A]"
   },
   {
@@ -36,7 +37,7 @@ const menuItems = [
     name: "Wagyu Steak",
     price: "85K",
     desc: "Daging wagyu meltique empuk dengan saus mushroom.",
-    image: "/images/steak.jpg",
+    image: "https://images.unsplash.com/photo-1555507036-ab1f40388085?w=800&q=80",
     bg: "bg-[#1A2F23]"
   },
   {
@@ -45,7 +46,7 @@ const menuItems = [
     name: "Choco Lava",
     price: "20K",
     desc: "Coklat lumer hangat dengan satu scoop es krim vanilla.",
-    image: "/images/coklat.jpg",
+    image: "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=800&q=80",
     bg: "bg-[#243E30]"
   },
 ];
@@ -55,7 +56,7 @@ const MenuExpandable = () => {
   const [activeId, setActiveId] = useState(1);
 
   return (
-    <section className="py-24 bg-arjes-bg overflow-hidden min-h-screen flex flex-col justify-center">
+    <section className="py-24 bg-arjes-bg overflow-hidden flex flex-col justify-center">
       
       {/* Header */}
       <div className="container mx-auto px-6 mb-12 flex justify-between items-end">
@@ -66,7 +67,7 @@ const MenuExpandable = () => {
           </h2>
         </div>
         <div className="hidden md:block text-right">
-          <p className="text-arjes-muted max-w-xs text-sm">
+          <p className="text-gray-400 max-w-xs text-sm">
             Geser atau klik kartu untuk melihat detail menu andalan kami hari ini.
           </p>
         </div>
@@ -79,7 +80,6 @@ const MenuExpandable = () => {
             key={item.id}
             layout
             onClick={() => setActiveId(item.id)}
-            // Logic: Kalau aktif flex-nya besar (melebar), kalau ga aktif kecil
             className={`relative h-full rounded-3xl overflow-hidden cursor-pointer transition-all duration-700 ease-spring
               ${activeId === item.id ? 'flex-[3.5]' : 'flex-[0.5] hover:flex-[0.8]'}
             `}
@@ -90,7 +90,7 @@ const MenuExpandable = () => {
             <img 
               src={item.image} 
               alt={item.name}
-              onError={(e) => {e.target.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?q=80&w=800"}}
+              onError={(e) => {e.target.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?q=80&w=800"}} // Fallback Image
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-110"
             />
 
@@ -118,14 +118,19 @@ const MenuExpandable = () => {
                   {item.desc}
                 </p>
 
-                <button className="flex items-center gap-3 bg-arjes-gold text-arjes-bg px-6 py-3 rounded-xl font-bold w-fit hover:bg-white transition-colors group">
+                {/* TOMBOL YANG SUDAH DIPERBAIKI */}
+                <Link 
+                    to="/menu" 
+                    className="flex items-center gap-2 bg-arjes-gold text-arjes-bg px-6 py-3 rounded-xl font-bold w-fit hover:bg-white transition-colors group"
+                >
                   Pesan Sekarang
                   <ArrowUpRight size={20} className="group-hover:rotate-45 transition-transform" />
-                </button>
+                </Link>
+                
               </motion.div>
             )}
 
-            {/* KONTEN SAAT KARTU TIDAK AKTIF (SEMPI T) */}
+            {/* KONTEN SAAT KARTU TIDAK AKTIF (SEMPIT) */}
             {activeId !== item.id && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
                 {/* Teks Vertikal */}

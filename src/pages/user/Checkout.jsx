@@ -1,265 +1,294 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { 
-  ArrowLeft, ShoppingBag, MapPin, Clock, Ticket, 
-  QrCode, CheckCircle, AlertCircle, Utensils 
-} from 'lucide-react';
-import { useCart } from '../../context/CartContext'; // Pastikan path ke context benar (naik 2 level)
+import { useCart } from '../../context/CartContext'; 
+import { Trash2, CreditCard, Upload, ArrowLeft, Ticket, CheckCircle, Store, Banknote, Utensils, ShoppingBag, AlertTriangle, Lock, PartyPopper, Plus, Minus } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 const Checkout = () => {
   const navigate = useNavigate();
-  const { cart, clearCart } = useCart(); 
   
-  // State Form
-  const [orderType, setOrderType] = useState('dine-in'); // 'dine-in' atau 'pickup'
-  const [pickupTime, setPickupTime] = useState('');
-  const [tableNumber, setTableNumber] = useState('');
+  const { 
+    cart, 
+    addToCart,      
+    decreaseQty,    
+    removeFromCart, 
+    clearCart, 
+    activeVoucher, 
+    applyVoucher 
+  } = useCart();
+
+  const [paymentMethod, setPaymentMethod] = useState('qris'); 
+  const [diningOption, setDiningOption] = useState('dine-in'); 
+  const [buktiTransfer, setBuktiTransfer] = useState(null);
+  const [inputVoucher, setInputVoucher] = useState('');
+
+  // --- 1. LOGIKA "TIERED PRICING" (Regular vs VIP) ---
+  const bookingItem = cart.find(item => item.category === 'reservation');
+  const foodItems = cart.filter(item => item.category !== 'reservation');
+  const hasBooking = !!bookingItem;
+
+  // Hitung Total Makanan Saja
+  const subtotalFood = foodItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
   
-  // State Voucher
-  const [voucherCode, setVoucherCode] = useState('');
-  const [discount, setDiscount] = useState(0);
-  const [appliedVoucher, setAppliedVoucher] = useState(null);
-  const [voucherError, setVoucherError] = useState('');
+  // Tentukan Target Minimum Berdasarkan Tipe Meja
+  let minOrderThreshold = 0;
+  if (bookingItem) {
+      if (bookingItem.details.type === 'vip') {
+          minOrderThreshold = 50000; // VIP min 50k
+      } else {
+          minOrderThreshold = 25000; // Regular min 25k
+      }
+  }
 
-  // State Payment
-  const [isPaid, setIsPaid] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  // Cek apakah Syarat Gratis Terpenuhi?
+  const isBookingFree = hasBooking && subtotalFood >= minOrderThreshold;
+  
+  // Hitung Harga Akhir Meja
+  const tablePriceOriginal = bookingItem ? bookingItem.price : 0;
+  const tablePriceFinal = isBookingFree ? 0 : tablePriceOriginal;
 
-  // Perhitungan Harga
-  const subtotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
-  const tax = subtotal * 0.11; // PPN 11%
-  const total = subtotal + tax - discount;
+  // Hitung Diskon Voucher
+  let discountAmount = 0;
+  if (activeVoucher) {
+      if (activeVoucher.type === 'percentage') discountAmount = subtotalFood * activeVoucher.value;
+      if (activeVoucher.type === 'fixed') discountAmount = activeVoucher.value;
+  }
 
-  // Redirect jika keranjang kosong
+  // TOTAL FINAL YANG HARUS DIBAYAR
+  const totalBayar = subtotalFood + tablePriceFinal - discountAmount;
+  
+  // Hitung kekurangan jajan (untuk alert)
+  const kurangJajan = minOrderThreshold - subtotalFood;
+
+  // --- 2. ATURAN PEMBAYARAN ---
   useEffect(() => {
-    if (cart.length === 0 && !isPaid) {
-      navigate('/menu');
+    if (hasBooking) {
+      setPaymentMethod('qris');
+      setDiningOption('dine-in'); 
     }
-  }, [cart, navigate, isPaid]);
+  }, [hasBooking]);
 
-  // Logic Voucher Sederhana (Simulasi)
-  const handleApplyVoucher = () => {
-    setVoucherError('');
-    if (!voucherCode) return;
-
-    if (voucherCode === 'ARJES20') {
-      const discValue = subtotal * 0.2; 
-      setDiscount(discValue);
-      setAppliedVoucher('ARJES20');
-    } else if (voucherCode === 'PICKUPHEMAT' && orderType === 'pickup') {
-      setDiscount(15000); 
-      setAppliedVoucher('PICKUPHEMAT');
-    } else if (voucherCode === 'PICKUPHEMAT' && orderType !== 'pickup') {
-      setVoucherError('Voucher ini khusus untuk pesanan Pickup!');
-    } else {
-      setVoucherError('Kode voucher tidak valid.');
-    }
-  };
-
-  // Logic Bayar (Simulasi)
+  // --- HANDLE BAYAR (DENGAN PENYIMPANAN DATA) ---
   const handlePayment = () => {
-    if (orderType === 'pickup' && !pickupTime) {
-      alert("Mohon isi jam pengambilan!");
+    if (cart.length === 0) return;
+
+    // Validasi Upload Bukti
+    if (paymentMethod === 'qris' && totalBayar > 0 && !buktiTransfer) {
+      alert("⚠️ Mohon upload bukti pembayaran dulu ya!");
       return;
     }
-    
-    setIsLoading(true);
 
-    // Simulasi loading 2 detik
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsPaid(true);
+    const methodText = paymentMethod === 'qris' ? 'Pembayaran QRIS' : 'Pembayaran Tunai';
+    const confirmMsg = `Total Rp ${totalBayar.toLocaleString()} akan diproses.\nMetode: ${methodText}\n\nLanjutkan?`;
+
+    if (window.confirm(confirmMsg)) {
+      
+      // 1. BUAT DATA ORDER BARU (Untuk Riwayat Dashboard)
+      const newOrder = {
+        id: `ORD-${Date.now()}`, // ID Unik
+        date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        items: cart, // Simpan item yang dibeli
+        total: totalBayar,
+        status: paymentMethod === 'qris' ? 'Menunggu Verifikasi' : 'Menunggu Pembayaran',
+        method: paymentMethod,
+        type: diningOption
+      };
+
+      // 2. SIMPAN KE LOCALSTORAGE (Gabungkan dengan data lama)
+      const existingOrders = JSON.parse(localStorage.getItem('arjes_orders') || '[]');
+      localStorage.setItem('arjes_orders', JSON.stringify([newOrder, ...existingOrders]));
+
+      alert("🎉 Pesanan Berhasil! Silakan cek status di Dashboard.");
       clearCart(); 
-    }, 2000);
+      navigate('/user/dashboard'); 
+    }
   };
 
-  // Tampilan Sukses Bayar
-  if (isPaid) {
+  if (cart.length === 0) {
     return (
-      <div className="min-h-screen bg-arjes-bg flex flex-col items-center justify-center p-6 text-center text-white">
-        <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center text-green-500 mb-6 animate-bounce">
-          <CheckCircle size={48} />
+      <div className="min-h-screen bg-arjes-bg flex flex-col items-center justify-center text-white p-4">
+        <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-6">
+            <CreditCard size={40} className="text-gray-400" />
         </div>
-        <h2 className="text-3xl font-serif font-bold text-arjes-gold mb-2">Pembayaran Berhasil!</h2>
-        <p className="text-gray-400 max-w-md mb-8">
-          Terima kasih. Pesanan Anda sedang kami siapkan. Silakan {orderType === 'pickup' ? 'datang sesuai jam pengambilan' : 'tunggu di meja Anda'}.
-        </p>
-        <Link to="/user/dashboard" className="bg-white/10 text-white px-8 py-3 rounded-xl font-bold hover:bg-white/20 transition-all">
-          Cek Status di Dashboard
+        <h2 className="text-2xl font-serif font-bold mb-2">Keranjangmu Kosong</h2>
+        <Link to="/menu" className="mt-4 bg-arjes-gold text-arjes-bg px-8 py-3 rounded-xl font-bold hover:bg-white transition-all">
+            Pesan Menu Sekarang
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-arjes-bg text-white pb-20">
-      {/* Header */}
-      <div className="p-6 border-b border-white/10 sticky top-0 bg-arjes-bg/95 backdrop-blur-sm z-10 flex items-center gap-4">
-        <button onClick={() => navigate('/menu')} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-          <ArrowLeft size={24} />
-        </button>
-        <h1 className="text-xl font-bold font-serif">Checkout Pesanan</h1>
-      </div>
-
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 p-6">
+    <div className="min-h-screen bg-arjes-bg text-arjes-text pt-28 pb-12 px-4">
+      <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-8">
         
-        {/* KOLOM KIRI: Form Order */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* 1. Metode Pesanan */}
-          <section className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <h2 className="text-lg font-bold text-arjes-gold mb-4 flex items-center gap-2">
-              <Utensils size={20} /> Metode Pesanan
-            </h2>
-            <div className="grid grid-cols-2 gap-4">
-              <button 
-                onClick={() => setOrderType('dine-in')}
-                className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${orderType === 'dine-in' ? 'border-arjes-gold bg-arjes-gold/10 text-arjes-gold' : 'border-white/10 hover:border-white/30 text-gray-400'}`}
-              >
-                <MapPin size={28} />
-                <span className="font-bold">Makan di Tempat</span>
-              </button>
-              
-              <button 
-                onClick={() => setOrderType('pickup')}
-                className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${orderType === 'pickup' ? 'border-arjes-gold bg-arjes-gold/10 text-arjes-gold' : 'border-white/10 hover:border-white/30 text-gray-400'}`}
-              >
-                <ShoppingBag size={28} />
-                <span className="font-bold">Ambil Sendiri (Pickup)</span>
-              </button>
-            </div>
+        {/* === KOLOM KIRI: DAFTAR ITEM === */}
+        <div className="md:col-span-2 space-y-6">
+          <div className="flex items-center gap-4 mb-4">
+            <button onClick={() => navigate(-1)} className="p-2 bg-white/5 rounded-full hover:bg-white/20 text-white transition-colors">
+                <ArrowLeft size={20} />
+            </button>
+            <h1 className="text-3xl font-serif font-bold text-white">Review Pesanan</h1>
+          </div>
 
-            {/* Input Tambahan */}
-            <div className="mt-6 animate-fade-in">
-              {orderType === 'pickup' ? (
+          {/* ALERT PROMO */}
+          {hasBooking && !isBookingFree && (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-2xl flex gap-3 text-yellow-200 text-sm animate-pulse">
+                <AlertTriangle className="flex-shrink-0" />
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Jam Pengambilan</label>
-                  <div className="relative">
-                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                    <input 
-                      type="time" 
-                      className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white focus:border-arjes-gold outline-none"
-                      value={pickupTime}
-                      onChange={(e) => setPickupTime(e.target.value)}
-                    />
+                    <p className="font-bold text-yellow-100">
+                        Promo Booking {bookingItem?.details.type === 'vip' ? 'VIP' : 'Regular'}
+                    </p>
+                    <p>
+                        Ayo jajan <b>Rp {kurangJajan.toLocaleString()}</b> lagi biar biaya meja jadi <b>GRATIS!</b> 
+                        (Min. order Rp {minOrderThreshold.toLocaleString()})
+                    </p>
+                    <Link to="/menu" className="text-white underline font-bold mt-1 inline-block">Tambah Menu +</Link>
+                </div>
+            </div>
+          )}
+
+          {hasBooking && isBookingFree && (
+             <div className="bg-green-500/10 border border-green-500/30 p-4 rounded-2xl flex gap-3 text-green-200 text-sm">
+                <PartyPopper className="flex-shrink-0 text-green-400" />
+                <div>
+                    <p className="font-bold text-green-100">Booking Meja GRATIS! 🥳</p>
+                    <p>Total jajanmu sudah di atas Rp {minOrderThreshold.toLocaleString()}. Nikmati fasilitas kami!</p>
+                </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {cart.map((item) => (
+              <div key={item.id} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-4 relative overflow-hidden group">
+                <div className="w-24 h-24 bg-gray-800 rounded-xl overflow-hidden flex-shrink-0 border border-white/5">
+                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                </div>
+                
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                        {item.category === 'reservation' ? (
+                            <span className="text-[10px] uppercase font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full mb-2 inline-block border border-blue-500/30">
+                                📅 {item.name}
+                            </span>
+                        ) : (
+                            <span className="text-[10px] uppercase font-bold bg-arjes-gold/20 text-arjes-gold px-2 py-0.5 rounded-full mb-2 inline-block border border-arjes-gold/30">
+                                🍔 Menu
+                            </span>
+                        )}
+                        <h3 className="font-bold text-white text-lg leading-tight">{item.name}</h3>
+                        {item.details && (
+                            <p className="text-xs text-gray-400 mt-1">
+                                {item.details.date} • {item.details.time} • {item.details.guests} Orang
+                            </p>
+                        )}
+                    </div>
+                    <button onClick={() => removeFromCart(item.id)} className="text-gray-500 hover:text-red-500 transition-colors p-2">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                  
+                  <div className="flex justify-between items-end mt-3">
+                    
+                    {/* TOMBOL KUANTITAS */}
+                    {item.category !== 'reservation' ? (
+                        <div className="flex items-center gap-3 bg-black/20 rounded-lg p-1">
+                            <button onClick={() => decreaseQty(item.id)} className="w-6 h-6 flex items-center justify-center bg-white/10 rounded-md hover:bg-white/20 text-white"><Minus size={14} /></button>
+                            <span className="font-bold text-sm min-w-[20px] text-center">{item.qty}</span>
+                            <button onClick={() => addToCart(item)} className="w-6 h-6 flex items-center justify-center bg-arjes-gold text-arjes-bg rounded-md hover:bg-white hover:text-arjes-bg transition-colors"><Plus size={14} /></button>
+                        </div>
+                    ) : (
+                        <div className="text-xs text-gray-500">1 Unit</div>
+                    )}
+
+                    {/* HARGA */}
+                    {item.category === 'reservation' ? (
+                        <div className="text-right">
+                            {isBookingFree ? (
+                                <><span className="block text-xs text-gray-500 line-through">Rp {item.price.toLocaleString()}</span><span className="font-bold text-lg text-green-400">FREE</span></>
+                            ) : (
+                                <span className="font-bold text-lg text-arjes-gold">Rp {item.price.toLocaleString()}</span>
+                            )}
+                        </div>
+                    ) : (
+                        <span className="font-bold text-lg text-arjes-gold">Rp {(item.price * item.qty).toLocaleString()}</span>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Nomor Meja (Opsional)</label>
-                  <input 
-                    type="number" 
-                    placeholder="Contoh: 12" 
-                    className="w-full bg-black/20 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-arjes-gold outline-none"
-                    value={tableNumber}
-                    onChange={(e) => setTableNumber(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 2. Metode Pembayaran (QRIS) */}
-          <section className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <h2 className="text-lg font-bold text-arjes-gold mb-4 flex items-center gap-2">
-              <QrCode size={20} /> Pembayaran QRIS
-            </h2>
-            <div className="flex flex-col md:flex-row gap-6 items-center bg-black/20 p-6 rounded-xl border border-white/5">
-              <div className="bg-white p-4 rounded-xl">
-                <img 
-                  src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=BayarArjesKitchen" 
-                  alt="QRIS Arjes" 
-                  className="w-40 h-40 object-contain"
-                />
               </div>
-              <div className="flex-1 text-center md:text-left">
-                <p className="text-gray-400 text-sm mb-2">Scan QR code di samping menggunakan aplikasi e-wallet (GoPay, OVO, Dana) atau Mobile Banking.</p>
-                <div className="bg-arjes-gold/10 border border-arjes-gold/20 p-3 rounded-lg inline-block">
-                  <p className="text-arjes-gold font-bold text-lg">Total: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(total)}</p>
-                </div>
-              </div>
-            </div>
-          </section>
+            ))}
+          </div>
         </div>
 
-        {/* KOLOM KANAN: Ringkasan Order */}
-        <div className="lg:col-span-1">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 sticky top-24">
-            <h3 className="font-bold text-lg mb-4">Ringkasan Pesanan</h3>
+        {/* === KOLOM KANAN: OPSI & BAYAR === */}
+        <div className="space-y-6">
             
-            {/* --- BAGIAN YANG TADI ERROR (Sudah diperbaiki) --- */}
-            <div className="space-y-4 max-h-60 overflow-y-auto pr-2 mb-6 custom-scrollbar">
-              {cart.map((item, index) => (
-                <div key={index} className="flex gap-3">
-                  <div className="w-12 h-12 bg-white/10 rounded-lg overflow-hidden flex-shrink-0">
-                    <img src={item.image || "https://via.placeholder.com/50"} alt={item.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-sm font-bold truncate">{item.name}</h4>
-                    <div className="flex justify-between text-xs text-gray-400 mt-1">
-                      <span>{item.qty}x</span>
-                      <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(item.price * item.qty)}</span>
+          {/* OPSI PESANAN */}
+          <div className="bg-white text-gray-900 p-6 rounded-3xl shadow-lg">
+             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider"><Utensils size={16} className="text-arjes-gold" /> Opsi Pesanan</h3>
+             <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => !hasBooking && setDiningOption('dine-in')} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${diningOption === 'dine-in' ? 'bg-arjes-bg text-white border-arjes-bg' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}><Utensils size={20} /><span className="text-xs font-bold">Dine In</span></button>
+                <button onClick={() => !hasBooking && setDiningOption('pickup')} disabled={hasBooking} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all relative ${diningOption === 'pickup' ? 'bg-arjes-bg text-white border-arjes-bg' : hasBooking ? 'bg-gray-100 text-gray-300 border-gray-100 cursor-not-allowed' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>{hasBooking && <Lock size={14} className="absolute top-2 right-2 text-gray-400"/>}<ShoppingBag size={20} /><span className="text-xs font-bold">Pick Up</span></button>
+             </div>
+             {hasBooking && <p className="text-[10px] text-gray-500 mt-2 text-center italic">*Booking meja wajib Dine-In</p>}
+          </div>
+
+          {/* VOUCHER */}
+          <div className="bg-white/5 border border-white/10 p-6 rounded-3xl">
+            <h3 className="font-bold text-white mb-4 flex items-center gap-2 text-sm uppercase tracking-wider"><Ticket size={16} className="text-arjes-gold" /> Kode Promo</h3>
+            {activeVoucher ? (
+                <div className="bg-green-500/20 border border-green-500/50 p-3 rounded-xl flex justify-between items-center text-green-400 text-sm">
+                    <span className="font-bold flex items-center gap-2"><CheckCircle size={14}/> {activeVoucher.name}</span>
+                    <button onClick={() => applyVoucher("REMOVE")} className="text-xs hover:text-white underline">Hapus</button>
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <input type="text" placeholder="Masukan kode..." value={inputVoucher} onChange={(e) => setInputVoucher(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-arjes-gold uppercase" />
+                    <button onClick={() => applyVoucher(inputVoucher)} className="bg-white/10 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-arjes-gold hover:text-arjes-bg transition-colors">Pakai</button>
+                </div>
+            )}
+          </div>
+
+          {/* STRUK & METODE BAYAR */}
+          <div className="bg-white text-gray-900 p-6 rounded-3xl shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5"><Store size={100} /></div>
+            
+            <div className="space-y-3 mb-6 text-sm relative z-10 border-b border-gray-100 pb-4">
+              <div className="flex justify-between text-gray-600"><span>Total Makanan</span><span>Rp {subtotalFood.toLocaleString()}</span></div>
+              {hasBooking && (<div className="flex justify-between font-medium"><span className={isBookingFree ? "text-green-600" : "text-gray-600"}>Biaya Meja {isBookingFree && "(Promo)"}</span>{isBookingFree ? (<span className="text-green-600 font-bold">GRATIS</span>) : (<span>Rp {tablePriceOriginal.toLocaleString()}</span>)}</div>)}
+              {activeVoucher && (<div className="flex justify-between text-green-600 font-medium"><span>Diskon</span><span>-Rp {discountAmount.toLocaleString()}</span></div>)}
+              <div className="flex justify-between text-2xl font-bold text-gray-900 pt-2"><span>Total Bayar</span><span>Rp {totalBayar.toLocaleString()}</span></div>
+            </div>
+
+            {totalBayar > 0 ? (
+                <div className="mb-6 relative z-10">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Metode Pembayaran</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                    <button onClick={() => setPaymentMethod('qris')} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${paymentMethod === 'qris' ? 'border-arjes-bg bg-arjes-bg/5 text-arjes-bg font-bold ring-1 ring-arjes-bg' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}><CreditCard size={18} /> <span className="text-xs">QRIS</span></button>
+                    <button onClick={() => !hasBooking && setPaymentMethod('cash')} disabled={hasBooking} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all relative ${paymentMethod === 'cash' ? 'border-arjes-bg bg-arjes-bg/5 text-arjes-bg font-bold ring-1 ring-arjes-bg' : hasBooking ? 'bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>{hasBooking && <Lock size={14} className="absolute top-2 right-2 text-gray-400"/>}<Banknote size={18} /> <span className="text-xs">Tunai/Kasir</span></button>
+                </div>
+
+                {paymentMethod === 'qris' && (
+                    <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 animate-in fade-in zoom-in-95 duration-300">
+                        <p className="text-center text-xs text-gray-500 mb-3">Scan QRIS:</p>
+                        <div className="bg-white p-2 rounded-lg border border-gray-200 w-32 h-32 mx-auto mb-4 shadow-sm"><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=BayarKeArjesKitchen" alt="QRIS" className="w-full h-full" /></div>
+                        <div className="space-y-2"><label className="flex flex-col items-center justify-center w-full h-16 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer hover:bg-white transition-colors bg-white/50"><div className="flex flex-col items-center justify-center pt-1">{buktiTransfer ? (<div className="text-green-600 flex items-center gap-1 font-bold text-xs"><CheckCircle size={14}/> {buktiTransfer.name.substring(0, 10)}...</div>) : (<><Upload className="w-4 h-4 mb-1 text-gray-400" /><p className="text-[9px] text-gray-500">Upload Bukti</p></>)}</div><input type="file" className="hidden" accept="image/*" onChange={(e) => setBuktiTransfer(e.target.files[0])} /></label></div>
                     </div>
-                  </div>
+                )}
+
+                {paymentMethod === 'cash' && (<div className="text-center p-4 bg-yellow-50 rounded-xl border border-yellow-200 text-yellow-800 text-sm animate-in fade-in zoom-in-95 duration-300"><p className="font-bold flex items-center justify-center gap-2 mb-1"><Store size={18} /> Bayar di Kasir</p><p className="text-xs opacity-80">Silakan menuju kasir untuk menyelesaikan pembayaran.</p></div>)}
                 </div>
-              ))}
-            </div>
+            ) : (
+                <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-xl text-center text-sm font-bold border border-green-200"><p>✨ Pesananmu Gratis!</p></div>
+            )}
 
-            {/* Voucher Input */}
-            <div className="mb-6">
-              <label className="text-xs text-gray-500 mb-1 block">Kode Voucher</label>
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  placeholder="Kode Promo" 
-                  className="flex-1 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-arjes-gold outline-none uppercase"
-                  value={voucherCode}
-                  onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-                  disabled={appliedVoucher !== null}
-                />
-                <button 
-                  onClick={handleApplyVoucher}
-                  disabled={appliedVoucher !== null}
-                  className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
-                >
-                  {appliedVoucher ? 'OK' : 'Pakai'}
-                </button>
-              </div>
-              {voucherError && <p className="text-red-400 text-xs mt-2 flex items-center gap-1"><AlertCircle size={10} /> {voucherError}</p>}
-              {appliedVoucher && <p className="text-green-400 text-xs mt-2 flex items-center gap-1"><CheckCircle size={10} /> Voucher berhasil!</p>}
-            </div>
-
-            {/* Kalkulasi */}
-            <div className="space-y-2 border-t border-white/10 pt-4 text-sm">
-              <div className="flex justify-between text-gray-400">
-                <span>Subtotal</span>
-                <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Pajak (11%)</span>
-                <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(tax)}</span>
-              </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-green-400 font-bold">
-                  <span>Diskon</span>
-                  <span>- {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(discount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-lg font-bold text-arjes-gold border-t border-white/10 pt-3 mt-2">
-                <span>Total Bayar</span>
-                <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(total)}</span>
-              </div>
-            </div>
-
-            <button 
-              onClick={handlePayment}
-              disabled={isLoading}
-              className="w-full mt-6 bg-gradient-to-r from-arjes-gold to-yellow-600 text-black font-bold py-4 rounded-xl shadow-lg hover:shadow-yellow-500/20 hover:scale-[1.02] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isLoading ? 'Memproses...' : 'Bayar Sekarang'}
+            <button onClick={handlePayment} className="w-full bg-arjes-gold text-arjes-bg py-4 rounded-xl font-bold text-lg hover:bg-gray-900 hover:text-white transition-all shadow-xl shadow-arjes-gold/20">
+              {totalBayar === 0 ? 'Konfirmasi Reservasi' : (paymentMethod === 'qris' ? 'Kirim Bukti Bayar' : 'Buat Pesanan')}
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );

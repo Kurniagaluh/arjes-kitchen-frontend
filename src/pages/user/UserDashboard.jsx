@@ -1,330 +1,294 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
-  User, Clock, CheckCircle, LogOut, Calendar, Coffee, Home, 
-  Loader2, Ticket, Copy, Check // Import Icon Tambahan
+  Coffee, LayoutDashboard, Ticket, LogOut, Home, ChevronRight, 
+  Settings, Save, Lock, X, ShoppingBag, Calendar, Menu
 } from 'lucide-react';
-import api from '../../api/axios'; 
 
-// --- DATA DUMMY VOUCHER (Bisa dipindah ke Database nanti) ---
-const vouchersData = [
-  {
-    id: 1,
-    title: "Diskon Opening",
-    desc: "Potongan harga untuk semua menu kopi & main course.",
-    minPurchase: "Min. belanja Rp 50.000",
-    validUntil: "31 Des 2024",
-    code: "ARJES20",
-    discount: "20%"
-  },
-  {
-    id: 2,
-    title: "Hemat Pickup",
-    desc: "Khusus pemesanan ambil sendiri (Self Pickup).",
-    minPurchase: "Min. belanja Rp 40.000",
-    validUntil: "15 Jan 2025",
-    code: "PICKUPHEMAT",
-    discount: "Rp 15rb"
-  },
-  {
-    id: 3,
-    title: "Traktiran Teman",
-    desc: "Beli 2 Kopi Susu Arjes gratis 1 Snack.",
-    minPurchase: "Tanpa minimum",
-    validUntil: "20 Des 2024",
-    code: "TRAKTIRARJES",
-    discount: "Free Item"
-  }
-];
+// --- HELPER FORMAT RUPIAH ---
+const formatRp = (value) => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0
+  }).format(value);
+};
 
-const UserDashboard = () => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('bookings'); // Default tab
-  
-  // State Data User
-  const [userData, setUserData] = useState({
-    name: "Loading...",
-    email: "...",
-    phone: "...",
-    role: "...",
-    avatar: "U"
-  });
-
-  // State Data Booking
-  const [bookings, setBookings] = useState([]);
-  const [loadingBookings, setLoadingBookings] = useState(false);
-
-  // State untuk Copy Voucher
-  const [copiedCode, setCopiedCode] = useState(null);
-
-  // 1. EFEK: CEK LOGIN & AMBIL PROFIL
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-
-    if (!storedUser || !token) {
-      navigate('/login');
-    } else {
-      try {
-        const user = JSON.parse(storedUser);
-        setUserData({
-          name: user.name || "User",
-          email: user.email || "-",
-          phone: user.phone || "-",
-          role: user.role === 'customer' ? 'Member Arjes' : user.role,
-          avatar: (user.name || "U").charAt(0).toUpperCase()
-        });
-      } catch (error) {
-        console.error("Gagal parse user", error);
-      }
-    }
-  }, [navigate]);
-
-  // 2. EFEK: AMBIL DATA BOOKING
-  useEffect(() => {
-    if (activeTab === 'bookings') {
-      fetchBookings();
-    }
-  }, [activeTab]);
-
-  const fetchBookings = async () => {
-    setLoadingBookings(true);
-    try {
-      const response = await api.get('/booking/me'); 
-      setBookings(response.data.data || response.data); 
-    } catch (error) {
-      console.error("Gagal ambil booking:", error);
-    } finally {
-      setLoadingBookings(false);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate('/login');
-  };
-
-  const formatRupiah = (number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
-  }
-
-  // Logic Copy Code Voucher
-  const handleCopy = (code) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => {
-      setCopiedCode(null);
-    }, 2000);
-  };
+// --- SUB-KOMPONEN: MODAL DETAIL ORDER (POP-UP) ---
+const OrderDetailModal = ({ order, onClose }) => {
+  if (!order) return null;
 
   return (
-    <div className="min-h-screen bg-arjes-bg text-white flex flex-col md:flex-row font-sans">
-      
-      {/* SIDEBAR */}
-      <aside className="w-full md:w-64 bg-black/20 border-r border-white/5 p-6 flex flex-col justify-between">
-        <div>
-          <Link to="/" className="flex items-center gap-2 mb-10 text-arjes-gold hover:opacity-80 transition-opacity">
-            <Coffee size={24} />
-            <span className="font-serif font-bold text-xl">Arjes User</span>
-          </Link>
-
-          <div className="flex items-center gap-3 mb-8 p-3 bg-white/5 rounded-xl border border-white/5">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-arjes-gold to-yellow-600 flex items-center justify-center font-bold text-black shadow-lg">
-              {userData.avatar}
-            </div>
-            <div className="overflow-hidden">
-              <h4 className="font-bold text-sm truncate">{userData.name}</h4>
-              <p className="text-xs text-arjes-muted truncate">{userData.email}</p>
-            </div>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-[#0F1F18] border border-white/10 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl transform scale-100">
+        
+        {/* Header Modal */}
+        <div className="bg-arjes-gold/10 p-6 flex justify-between items-start border-b border-white/5">
+          <div>
+            <h3 className="text-arjes-gold font-bold text-xl">Detail Pesanan</h3>
+            <p className="text-xs text-gray-400 mt-1">Order ID: {order.id}</p>
           </div>
-
-          <nav className="space-y-2">
-            <button onClick={() => setActiveTab('bookings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === 'bookings' ? 'bg-arjes-gold text-arjes-bg' : 'text-arjes-muted hover:bg-white/5 hover:text-white'}`}>
-              <Calendar size={18} /> Riwayat Booking
-            </button>
-            
-            {/* TOMBOL BARU: VOUCHER */}
-            <button onClick={() => setActiveTab('vouchers')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === 'vouchers' ? 'bg-arjes-gold text-arjes-bg' : 'text-arjes-muted hover:bg-white/5 hover:text-white'}`}>
-              <Ticket size={18} /> Info Voucher
-            </button>
-
-            <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === 'profile' ? 'bg-arjes-gold text-arjes-bg' : 'text-arjes-muted hover:bg-white/5 hover:text-white'}`}>
-              <User size={18} /> Profil Saya
-            </button>
-            
-            <Link to="/" className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-arjes-muted hover:bg-white/5 hover:text-white transition-all">
-              <Home size={18} /> Kembali ke Home
-            </Link>
-          </nav>
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+            <X size={24} />
+          </button>
         </div>
 
-        <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm font-medium px-4 py-2 mt-6 w-full text-left transition-colors">
-          <LogOut size={18} /> Logout
-        </button>
-      </aside>
+        {/* Body Modal */}
+        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+          
+          {/* Status */}
+          <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
+            <span className="text-sm text-gray-400">Status</span>
+            <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
+              order.status === 'Selesai' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 
+              order.status === 'Menunggu Verifikasi' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+              'bg-blue-500/20 text-blue-400 border-blue-500/30'
+            }`}>
+              {order.status}
+            </span>
+          </div>
 
-      {/* KONTEN KANAN */}
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-serif font-bold">
-            {activeTab === 'bookings' && `Halo, ${userData.name.split(' ')[0]}!`}
-            {activeTab === 'vouchers' && 'Voucher Spesial'}
-            {activeTab === 'profile' && 'Profil Pengguna'}
-          </h1>
-        </header>
-
-        {/* --- TAB 1: BOOKING (DATA DARI API) --- */}
-        {activeTab === 'bookings' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            
-            {loadingBookings && (
-              <div className="text-center py-10 text-arjes-muted flex flex-col items-center">
-                <Loader2 className="animate-spin mb-2" />
-                <p>Mengambil data booking...</p>
-              </div>
-            )}
-
-            {!loadingBookings && bookings.length === 0 && (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
-                <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4 text-arjes-muted">
-                  <Calendar size={32} />
+          {/* Daftar Item */}
+          <div className="space-y-3">
+            <p className="text-sm font-bold text-white border-b border-white/10 pb-2">Item Dipesan</p>
+            {order.items.map((item, idx) => (
+              <div key={idx} className="flex justify-between items-center text-sm">
+                <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 rounded-lg bg-gray-700 overflow-hidden flex-shrink-0">
+                      <img src={item.image} alt="img" className="w-full h-full object-cover"/>
+                   </div>
+                   <div>
+                      <p className="text-white font-medium">
+                        {item.name} 
+                        {item.category === 'reservation' && <span className="text-[10px] text-blue-400 ml-1">(Booking)</span>}
+                      </p>
+                      <p className="text-xs text-gray-500">{item.qty} x {formatRp(item.price)}</p>
+                   </div>
                 </div>
-                <h3 className="text-xl font-bold mb-2">Belum Ada Reservasi</h3>
-                <p className="text-arjes-muted mb-6">Kamu belum pernah melakukan booking meja. Yuk pesan sekarang!</p>
-                <Link to="/booking" className="bg-arjes-gold text-arjes-bg px-6 py-3 rounded-xl font-bold hover:bg-white transition-colors inline-block">
-                  Booking Meja Baru
-                </Link>
-              </div>
-            )}
-
-            {!loadingBookings && bookings.map((booking) => (
-              <div key={booking.id} className="bg-arjes-surface/50 border border-white/5 rounded-2xl p-6 flex flex-col md:flex-row justify-between gap-6 hover:border-arjes-gold/30 transition-colors">
-                <div className="flex gap-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
-                    ${booking.status === 'confirmed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}
-                  `}>
-                    {booking.status === 'confirmed' ? <CheckCircle size={24} /> : <Clock size={24} />}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-white">
-                      {booking.meja ? booking.meja.name : `Meja #${booking.meja_id}`}
-                    </h3>
-                    <p className="text-sm text-arjes-muted flex items-center gap-2 mt-1">
-                      <Calendar size={14} /> {booking.tanggal} • {booking.jam}
-                    </p>
-                    {booking.order_items && (
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <span className="text-xs bg-black/30 px-2 py-1 rounded text-white/70">
-                          {booking.order_items.length} Item Pesanan
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end justify-center">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase mb-2
-                    ${booking.status === 'confirmed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}
-                  `}>
-                    {booking.status}
-                  </span>
-                  <span className="text-xl font-bold text-white">
-                    {booking.total_harga ? formatRupiah(booking.total_harga) : '-'}
-                  </span>
-                </div>
+                <span className="text-white font-medium">{formatRp(item.price * item.qty)}</span>
               </div>
             ))}
-          </motion.div>
-        )}
+          </div>
 
-        {/* --- TAB 2: VOUCHER (FITUR BARU) --- */}
-        {activeTab === 'vouchers' && (
-           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-             <p className="text-arjes-muted mb-6">Salin kode di bawah ini dan gunakan saat checkout.</p>
-             
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-               {vouchersData.map((voucher) => (
-                 <div key={voucher.id} className="group relative flex flex-col bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-arjes-gold/50 transition-all hover:-translate-y-1">
-                   {/* Bagian Atas */}
-                   <div className="p-5 flex-1">
-                     <div className="flex justify-between items-start mb-2">
-                       <div>
-                         <h3 className="text-xl font-bold text-white group-hover:text-arjes-gold transition-colors">
-                           {voucher.title}
-                         </h3>
-                         <span className="inline-block px-2 py-0.5 mt-1 text-xs font-semibold bg-arjes-gold/20 text-arjes-gold rounded">
-                           {voucher.discount}
-                         </span>
-                       </div>
-                       <Ticket className="text-white/20 group-hover:text-arjes-gold/40 transition-colors" size={40} />
-                     </div>
-                     <p className="text-sm text-gray-400 mb-4">{voucher.desc}</p>
-                     <div className="flex flex-col gap-1 text-xs text-gray-500">
-                       <div className="flex items-center gap-2">
-                         <span className="w-1.5 h-1.5 rounded-full bg-arjes-gold"></span>
-                         {voucher.minPurchase}
-                       </div>
-                       <div className="flex items-center gap-2">
-                         <Clock size={12} /> Berlaku s/d {voucher.validUntil}
-                       </div>
-                     </div>
-                   </div>
-
-                   {/* Garis Putus-putus */}
-                   <div className="relative h-4 bg-black/20">
-                     <div className="absolute top-1/2 left-0 w-full border-t border-dashed border-white/20"></div>
-                     <div className="absolute top-1/2 -left-2 w-4 h-4 bg-[#0a0a0a] rounded-full -translate-y-1/2"></div>
-                     <div className="absolute top-1/2 -right-2 w-4 h-4 bg-[#0a0a0a] rounded-full -translate-y-1/2"></div>
-                   </div>
-
-                   {/* Bagian Bawah: Copy Code */}
-                   <div className="p-4 bg-black/20 flex items-center justify-between gap-4">
-                     <div className="flex-1 bg-black/40 border border-white/10 border-dashed rounded px-3 py-2 text-center font-mono text-arjes-gold tracking-widest font-bold">
-                       {voucher.code}
-                     </div>
-                     <button
-                       onClick={() => handleCopy(voucher.code)}
-                       className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 
-                         ${copiedCode === voucher.code 
-                           ? 'bg-green-500/20 text-green-400 border border-green-500/50' 
-                           : 'bg-arjes-gold text-black hover:bg-yellow-500 active:scale-95'
-                         }`}
-                     >
-                       {copiedCode === voucher.code ? <><Check size={16} /> Salin</> : <><Copy size={16} /> Salin</>}
-                     </button>
-                   </div>
-                 </div>
-               ))}
+          {/* Info Pembayaran */}
+          <div className="bg-black/20 p-4 rounded-xl space-y-2 text-sm mt-4">
+             <div className="flex justify-between text-gray-400">
+                <span>Tanggal</span>
+                <span className="text-white">{order.date} • {order.time}</span>
              </div>
-           </motion.div>
-        )}
-
-        {/* --- TAB 3: PROFIL (DATA LOKAL) --- */}
-        {activeTab === 'profile' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-             <div className="bg-arjes-surface/50 border border-white/5 rounded-2xl p-8 max-w-2xl">
-                <div className="flex items-center gap-6 mb-8">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-arjes-gold to-yellow-700 flex items-center justify-center text-4xl font-bold text-white shadow-2xl border-4 border-arjes-bg">
-                    {userData.avatar}
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{userData.name}</h2>
-                    <p className="text-arjes-muted">{userData.role}</p>
-                  </div>
-                </div>
-                <div className="grid gap-6">
-                  <div className="bg-black/20 p-4 rounded-xl border border-white/5">
-                    <label className="block text-xs text-arjes-gold uppercase tracking-wider mb-1">Email</label>
-                    <p className="font-medium text-white">{userData.email}</p>
-                  </div>
-                  <div className="bg-black/20 p-4 rounded-xl border border-white/5">
-                    <label className="block text-xs text-arjes-gold uppercase tracking-wider mb-1">No. Handphone</label>
-                    <p className="font-medium text-white">{userData.phone}</p>
-                  </div>
-                </div>
+             <div className="flex justify-between text-gray-400">
+                <span>Metode</span>
+                <span className="text-white uppercase">{order.method}</span>
              </div>
-          </motion.div>
-        )}
+             <div className="border-t border-white/10 my-2 pt-2 flex justify-between items-center">
+                <span className="font-bold text-white">Total Bayar</span>
+                <span className="font-bold text-arjes-gold text-lg">{formatRp(order.total)}</span>
+             </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// --- SUB-KOMPONEN: RIWAYAT PESANAN (LIST) ---
+const OrderHistory = () => {
+  const [orders, setOrders] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  useEffect(() => {
+    const savedOrders = localStorage.getItem('arjes_orders');
+    if (savedOrders) {
+      setOrders(JSON.parse(savedOrders));
+    }
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-serif font-bold text-white mb-6">Riwayat Pesanan</h2>
+      
+      {orders.length === 0 ? (
+        <div className="text-center py-12 bg-white/5 rounded-2xl border border-white/10 border-dashed">
+          <ShoppingBag size={40} className="mx-auto text-gray-600 mb-3"/>
+          <p className="text-gray-400">Belum ada riwayat pesanan.</p>
+          <Link to="/menu" className="text-arjes-gold font-bold hover:underline mt-2 inline-block">Pesan Sekarang</Link>
+        </div>
+      ) : (
+        orders.map((order) => (
+          <div key={order.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-arjes-gold/50 transition-all cursor-pointer" onClick={() => setSelectedOrder(order)}>
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${
+                   order.status === 'Selesai' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                }`}>
+                  {order.status}
+                </span>
+                <h3 className="text-white font-bold text-base mt-2 line-clamp-1">
+                   {order.items[0].name} 
+                   {order.items.length > 1 && <span className="text-xs text-gray-500 font-normal ml-1">+{order.items.length - 1} lainnya</span>}
+                </h3>
+                <p className="text-gray-400 text-xs flex items-center gap-1 mt-1">
+                   <Calendar size={12}/> {order.date} • {order.time}
+                </p>
+              </div>
+              <span className="text-arjes-gold font-bold text-lg">{formatRp(order.total)}</span>
+            </div>
+            
+            <div className="border-t border-white/10 pt-3 flex justify-between items-center">
+              <span className="text-xs text-gray-500 font-mono">ID: {order.id.slice(-6)}</span>
+              <span className="text-xs text-white bg-white/10 px-3 py-1.5 rounded-lg hover:bg-arjes-gold hover:text-black transition-colors flex items-center gap-1">
+                Detail <ChevronRight size={12} />
+              </span>
+            </div>
+          </div>
+        ))
+      )}
+
+      {selectedOrder && (
+        <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
+      )}
+    </div>
+  );
+};
+
+// --- SUB-KOMPONEN LAINNYA ---
+const VoucherList = () => (
+  <div>
+    <h2 className="text-2xl font-serif font-bold text-white mb-6">Voucher Saya</h2>
+    <div className="grid md:grid-cols-2 gap-4">
+      <div className="bg-gradient-to-r from-arjes-gold to-yellow-600 rounded-xl p-5 text-arjes-bg relative overflow-hidden shadow-lg">
+        <div className="absolute -right-4 -top-4 bg-white/20 w-24 h-24 rounded-full blur-2xl"></div>
+        <h3 className="font-bold text-xl mb-1">Diskon 20%</h3>
+        <p className="text-sm opacity-80 mb-4">Khusus pengguna baru Arjes Kitchen.</p>
+        <div className="bg-arjes-bg/90 text-arjes-gold px-4 py-2 rounded-lg font-mono font-bold text-center border-2 border-dashed border-arjes-gold/50 cursor-pointer hover:bg-arjes-bg transition-colors"
+             onClick={() => {navigator.clipboard.writeText('ARJES20'); alert('Kode disalin!');}}>
+          ARJES20
+        </div>
+      </div>
+      <div className="bg-white/5 border border-white/10 rounded-xl p-5 text-white">
+        <h3 className="font-bold text-xl mb-1">Gratis Booking</h3>
+        <p className="text-gray-400 text-sm mb-4">Min. order 25rb (Regular) / 50rb (VIP).</p>
+        <div className="bg-black/30 px-4 py-2 rounded-lg text-center text-sm text-gray-400 font-bold border border-white/5">Otomatis Dipakai</div>
+      </div>
+    </div>
+  </div>
+);
+
+const EditProfile = ({ user }) => {
+  const [formData, setFormData] = useState({ name: user?.name || '', email: user?.email || '', password: '', confirmPassword: '' });
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleSave = (e) => { e.preventDefault(); alert("Profil berhasil diperbarui! (Simulasi)"); };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-serif font-bold text-white mb-6">Edit Profil</h2>
+      <form onSubmit={handleSave} className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-5">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-16 h-16 bg-arjes-gold rounded-full flex items-center justify-center text-arjes-bg font-bold text-2xl border-4 border-white/5">{user?.name?.charAt(0).toUpperCase()}</div>
+          <div><p className="text-white font-bold text-lg">{user?.name}</p><p className="text-xs text-gray-500">Member Sejak 2024</p></div>
+        </div>
+        <div><label className="block text-xs text-gray-400 mb-2 uppercase font-bold tracking-wider">Nama Lengkap</label><input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold transition-colors"/></div>
+        <div><label className="block text-xs text-gray-400 mb-2 uppercase font-bold tracking-wider">Email Address</label><input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold opacity-50 cursor-not-allowed" readOnly /></div>
+        <div className="pt-4 border-t border-white/10"><h3 className="text-white font-bold mb-4 flex items-center gap-2 text-sm"><Lock size={16}/> Ganti Password</h3><div className="grid md:grid-cols-2 gap-4"><div><label className="block text-xs text-gray-400 mb-2">Password Baru</label><input type="password" name="password" placeholder="Kosongkan jika tidak diganti" onChange={handleChange} className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold"/></div><div><label className="block text-xs text-gray-400 mb-2">Ulangi Password</label><input type="password" name="confirmPassword" placeholder="Konfirmasi password baru" onChange={handleChange} className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold"/></div></div></div>
+        <button className="w-full md:w-auto bg-arjes-gold text-arjes-bg px-8 py-3 rounded-xl font-bold hover:bg-white transition-colors flex items-center justify-center gap-2 mt-4"><Save size={18} /> Simpan Perubahan</button>
+      </form>
+    </div>
+  );
+};
+
+// === MAIN USER DASHBOARD ===
+const UserDashboard = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('orders'); 
+  const [user, setUser] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // STATE SIDEBAR MOBILE
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) { navigate('/login'); } else { setUser(JSON.parse(userData)); }
+  }, [navigate]);
+
+  // --- LOGOUT FIXED: KE HOME ---
+  // Ini logika yang sama persis dengan Admin Dashboard sekarang
+  const handleLogout = () => { 
+    localStorage.removeItem('token'); 
+    localStorage.removeItem('user'); 
+    navigate('/'); // <--- UBAH KE HOME
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="flex h-screen bg-arjes-bg text-arjes-text overflow-hidden font-sans selection:bg-arjes-gold selection:text-black">
+      
+      {/* --- OVERLAY MOBILE --- */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        ></div>
+      )}
+
+      {/* --- SIDEBAR RESPONSIVE --- */}
+      <aside className={`
+        fixed top-0 left-0 z-50 h-full w-64 bg-[#0F1F18] border-r border-white/5 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:translate-x-0 md:static md:flex
+      `}>
+        <div className="p-8 flex items-center justify-between md:justify-start gap-3 mb-2">
+           <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-arjes-gold rounded-xl flex items-center justify-center text-arjes-bg font-bold shadow-lg"><Coffee size={24} /></div>
+              <h1 className="text-xl font-serif font-bold text-arjes-gold">Arjes User</h1>
+           </div>
+           {/* Tombol Close di HP */}
+           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white"><X size={24} /></button>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-2">
+          {[
+            { id: 'orders', label: 'Riwayat', icon: LayoutDashboard },
+            { id: 'vouchers', label: 'Voucher', icon: Ticket },
+            { id: 'profile', label: 'Edit Profil', icon: Settings },
+          ].map((item) => (
+            <button 
+              key={item.id}
+              onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all group ${
+                activeTab === item.id ? 'bg-arjes-gold text-arjes-bg font-bold shadow-lg' : 'text-gray-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <item.icon size={18} /> {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-6 border-t border-white/5 space-y-2 mt-auto">
+          <Link to="/" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:text-white transition-all hover:bg-white/5"><Home size={18} /> Ke Menu Utama</Link>
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-all font-medium"><LogOut size={18} /> Keluar</button>
+        </div>
+      </aside>
+
+      {/* --- KONTEN UTAMA --- */}
+      <main className="flex-1 overflow-y-auto h-full p-6 md:p-12 relative z-10 scroll-smooth">
+        
+        {/* Header Mobile (Hamburger) */}
+        <div className="md:hidden flex items-center gap-4 mb-6">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-white/10 rounded-lg text-white"><Menu size={24}/></button>
+            <h1 className="text-xl font-bold text-white">Dashboard</h1>
+        </div>
+
+        <div className="mb-8">
+            <h1 className="text-2xl md:text-4xl font-serif font-bold text-white mb-2">Halo, {user.name.split(' ')[0]}! 👋</h1>
+            <p className="text-gray-400 text-sm">Selamat datang kembali di Arjes Kitchen.</p>
+        </div>
+
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {activeTab === 'orders' && <OrderHistory />}
+            {activeTab === 'vouchers' && <VoucherList />}
+            {activeTab === 'profile' && <EditProfile user={user} />}
+        </div>
       </main>
     </div>
   );

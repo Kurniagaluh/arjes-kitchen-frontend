@@ -1,264 +1,182 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, Link } from 'react-router-dom';
-import { Utensils, Coffee, X, ShoppingBag, Plus, Minus, ArrowRight, Loader2, Tag, CreditCard } from 'lucide-react';
-import { useCart } from '../context/CartContext';
-import api from '../api/axios';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Search, ShoppingCart, Filter, Star } from 'lucide-react';
+import { useCart } from '../context/CartContext'; 
+import { useNavigate } from 'react-router-dom'; // PENTING: Untuk memindahkan user ke halaman login
+
+// --- DUMMY DATA MENU ---
+const MENU_ITEMS = [
+  // COFFEE
+  { id: 1, name: 'Kopi Susu Gula Aren', category: 'coffee', price: 18000, rating: 4.8, image: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&q=80', desc: 'Espresso + Gula Aren Organik + Fresh Milk' },
+  { id: 2, name: 'Americano', category: 'coffee', price: 15000, rating: 4.5, image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&q=80', desc: 'Double shot espresso dengan air panas' },
+  { id: 3, name: 'Caramel Macchiato', category: 'coffee', price: 24000, rating: 4.9, image: 'https://images.unsplash.com/photo-1485808191679-5f8c7c8606f5?w=500&q=80', desc: 'Vanilla syrup, espresso, milk & caramel sauce' },
+  
+  // NON-COFFEE
+  { id: 4, name: 'Matcha Latte', category: 'non-coffee', price: 22000, rating: 4.7, image: 'https://images.unsplash.com/photo-1515825838458-f2a94b20105a?w=500&q=80', desc: 'Premium matcha powder dengan susu creamy' },
+  { id: 5, name: 'Red Velvet Latte', category: 'non-coffee', price: 22000, rating: 4.6, image: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=500&q=80', desc: 'Rasa red velvet cake dalam bentuk minuman' },
+  
+  // FOOD
+  { id: 6, name: 'Nasi Goreng Arjes', category: 'food', price: 25000, rating: 4.8, image: 'https://images.unsplash.com/photo-1603133872878-684f57143988?w=500&q=80', desc: 'Spesial bumbu rempah + Telur + Kerupuk' },
+  { id: 7, name: 'Rice Bowl Teriyaki', category: 'food', price: 28000, rating: 4.7, image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80', desc: 'Nasi pulen dengan ayam saus teriyaki' },
+  
+  // SNACK
+  { id: 8, name: 'Mix Platter', category: 'snack', price: 30000, rating: 4.5, image: 'https://images.unsplash.com/photo-1576506542790-512442482e39?w=500&q=80', desc: 'Sosis, Nugget, Kentang Goreng jadi satu' },
+  { id: 9, name: 'French Fries', category: 'snack', price: 15000, rating: 4.4, image: 'https://images.unsplash.com/photo-1630384060421-a4323ceca0df?w=500&q=80', desc: 'Kentang goreng renyah bumbu asin gurih' },
+];
 
 const Menu = () => {
-  const { 
-    cart, addToCart, updateQuantity, 
-    isSidebarOpen, setIsSidebarOpen
-  } = useCart();
+  const { addToCart } = useCart();
+  const navigate = useNavigate(); // Inisialisasi fungsi navigasi
   
-  const [menuItems, setMenuItems] = useState([]);
-  const [activeCategory, setActiveCategory] = useState('All');
-  const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // --- FETCH DATA MENU ---
-  useEffect(() => {
-    fetchMenu();
-  }, []);
-
-  const fetchMenu = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/menu'); // GET /api/menu
-      const data = response.data.data || response.data;
-      setMenuItems(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Gagal fetch menu:", error);
-    } finally {
-      setLoading(false);
+  // --- LOGIKA UTAMA: CEK LOGIN SAAT KLIK TAMBAH ---
+  const handleAddToCart = (item) => {
+    // 1. Cek apakah ada 'user' di penyimpanan browser
+    const user = localStorage.getItem('user');
+    
+    if (user) {
+      // KONDISI: SUDAH LOGIN
+      // Lakukan fungsi tambah ke keranjang
+      addToCart({ ...item, image: item.image });
+    } else {
+      // KONDISI: BELUM LOGIN
+      // 1. Kasih Peringatan
+      alert("Silakan Login atau Sign Up terlebih dahulu untuk memesan menu! 😊");
+      // 2. Arahkan ke halaman Login
+      navigate('/login');
     }
   };
-  
-  const filteredItems = activeCategory === 'All'
-    ? menuItems
-    : menuItems.filter(item => item.category === activeCategory);
 
-  const categories = ['All', 'Coffee', 'Non-Coffee', 'Food'];
+  // LOGIKA FILTER & SEARCH (Biasa)
+  const filteredItems = MENU_ITEMS.filter((item) => {
+    const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
-  const formatRupiah = (number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(Number(number));
-  };
-  
-  // Component Card Menu
-  const MenuCard = ({ item }) => (
-    <motion.div 
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="bg-arjes-surface/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden shadow-xl flex flex-col group"
-    >
-      <div className="h-40 overflow-hidden relative">
-        <img 
-          src={item.image || "https://placehold.co/400x300/1A2F23/C5A059?text=Menu+Arjes"} 
-          alt={item.name} 
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-        />
-        <span className="absolute top-3 left-3 bg-arjes-gold text-arjes-bg px-3 py-1 rounded text-xs font-bold">{item.category}</span>
-      </div>
-      <div className="p-4 flex flex-col flex-grow">
-        <h3 className="text-lg font-bold text-white mb-1">{item.name}</h3>
-        <p className="text-arjes-muted text-xs line-clamp-2 flex-grow">{item.description}</p>
-        <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10">
-          <span className="text-xl font-bold text-arjes-gold">{formatRupiah(item.price)}</span>
-          <button 
-            onClick={() => addToCart({ id: item.id, name: item.name, price: Number(item.price), image: item.image, category: item.category })}
-            className="bg-white/10 text-white p-2 rounded-full hover:bg-arjes-gold hover:text-arjes-bg transition-colors shadow-md"
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
+  const categories = [
+    { id: 'all', label: 'Semua' },
+    { id: 'coffee', label: 'Coffee' },
+    { id: 'non-coffee', label: 'Non-Coffee' },
+    { id: 'food', label: 'Makanan Berat' },
+    { id: 'snack', label: 'Cemilan' },
+  ];
 
   return (
-    <div className="min-h-screen bg-arjes-bg text-white font-sans pt-24 pb-20">
-      <div className="container mx-auto px-6 max-w-7xl">
-        <h1 className="text-5xl font-serif font-bold text-white mb-2">Our Full Menu</h1>
-        <p className="text-arjes-muted text-lg mb-8">Pilih menu favoritmu, tambahkan ke keranjang, dan checkout!</p>
-
-        {/* Tab Kategori */}
-        <div className="flex flex-wrap justify-start gap-3 mb-10 border-b border-white/10 pb-4">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all
-                ${activeCategory === cat 
-                  ? "bg-arjes-gold text-arjes-bg shadow-md" 
-                  : "bg-white/5 text-arjes-muted hover:text-white"
-                }`}
-            >
-              {cat}
-            </button>
-          ))}
+    <div className="min-h-screen bg-arjes-bg text-arjes-text pt-24 pb-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header Menu (Selalu Tampil) */}
+        <div className="text-center mb-12">
+          <motion.h1 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-4xl md:text-5xl font-serif font-bold text-white mb-4"
+          >
+            Our Full Menu
+          </motion.h1>
+          <p className="text-gray-400 max-w-2xl mx-auto">
+            Nikmati sajian terbaik dari biji kopi pilihan dan bahan berkualitas. 
+            Pesan sekarang, kami antar ke mejamu.
+          </p>
         </div>
 
-        {/* List Menu */}
-        {loading ? (
-          <div className="text-center py-20 text-arjes-muted flex flex-col items-center">
-            <Loader2 className="animate-spin mb-3" size={32} />
-            <p>Memuat menu dari database...</p>
+        {/* Filter & Search (Selalu Tampil) */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10">
+          <div className="flex gap-2 overflow-x-auto pb-2 w-full md:w-auto no-scrollbar">
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all border ${
+                  activeCategory === cat.id
+                    ? 'bg-arjes-gold text-arjes-bg border-arjes-gold'
+                    : 'bg-transparent text-gray-400 border-white/10 hover:border-arjes-gold hover:text-arjes-gold'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
           </div>
-        ) : filteredItems.length === 0 ? (
-          <p className="text-center py-20 text-arjes-muted">Tidak ada menu di kategori ini.</p>
+
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+            <input 
+              type="text" 
+              placeholder="Cari kopi atau makanan..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:border-arjes-gold focus:ring-1 focus:ring-arjes-gold transition-all"
+            />
+          </div>
+        </div>
+
+        {/* DAFTAR MENU (Selalu Tampil) */}
+        {filteredItems.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredItems.map((item) => (
+              <motion.div
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                key={item.id}
+                className="bg-white/5 border border-white/5 rounded-3xl overflow-hidden hover:border-arjes-gold/30 hover:bg-white/10 transition-all group"
+              >
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={item.image} 
+                    alt={item.name} 
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                  />
+                  <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1 text-xs text-yellow-400 font-bold border border-white/10">
+                    <Star size={12} fill="currentColor" /> {item.rating}
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-xl font-bold text-white group-hover:text-arjes-gold transition-colors">{item.name}</h3>
+                    <span className="text-arjes-gold font-bold whitespace-nowrap">
+                      {item.price / 1000}K
+                    </span>
+                  </div>
+                  
+                  <p className="text-gray-400 text-sm mb-4 line-clamp-2 h-10">
+                    {item.desc}
+                  </p>
+
+                  {/* TOMBOL INI YANG MENGATUR LOGIKA LOGIN */}
+                  <button 
+                    onClick={() => handleAddToCart(item)} 
+                    className="w-full bg-white/10 text-white py-3 rounded-xl font-bold hover:bg-arjes-gold hover:text-arjes-bg transition-all flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-arjes-gold/20"
+                  >
+                    <ShoppingCart size={18} /> Tambah
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         ) : (
-          <motion.div layout className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {filteredItems.map(item => <MenuCard key={item.id} item={item} />)}
-          </motion.div>
+          <div className="text-center py-20">
+            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+               <Filter size={32} className="text-gray-500" />
+            </div>
+            <h3 className="text-xl font-bold text-white">Menu tidak ditemukan</h3>
+            <p className="text-gray-400">Coba cari kata kunci lain atau ganti kategori.</p>
+            <button 
+                onClick={() => {setSearchTerm(''); setActiveCategory('all');}}
+                className="mt-4 text-arjes-gold hover:underline"
+            >
+                Reset Filter
+            </button>
+          </div>
         )}
+
       </div>
-      
-      {/* --- CART SIDEBAR --- */}
-      <AnimatePresence>
-        {isSidebarOpen && <CartSidebar />}
-      </AnimatePresence>
     </div>
   );
-};
-
-// --- KOMPONEN SIDEBAR CART ---
-const CartSidebar = () => {
-    const { 
-        cart, removeFromCart, updateQuantity, clearCart,
-        calculateTotal, calculateSubtotal, applyVoucher,
-        isSidebarOpen, setIsSidebarOpen, activeVoucher, calculateDiscount
-    } = useCart();
-    
-    const navigate = useNavigate();
-    const [voucherCode, setVoucherCode] = useState('');
-    
-    const formatRupiah = (number) => {
-        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(Number(number));
-    };
-
-    const handleCheckout = () => {
-        if (!localStorage.getItem('token')) {
-            alert("Harap login atau daftar untuk melanjutkan pembayaran!");
-            navigate('/login');
-            return;
-        }
-        if (cart.length === 0) {
-            alert("Keranjang masih kosong!");
-            return;
-        }
-        setIsSidebarOpen(false);
-        navigate('/checkout');
-    };
-
-    return (
-        <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'tween', duration: 0.3 }}
-            className="fixed inset-y-0 right-0 w-full max-w-sm bg-[#111] z-[100] shadow-2xl border-l border-white/10 flex flex-col"
-        >
-            {/* Header */}
-            <div className="p-6 flex justify-between items-center border-b border-white/10">
-                <h2 className="text-xl font-bold flex items-center gap-3">
-                    <ShoppingBag size={24} className="text-arjes-gold" /> Keranjang Belanja
-                </h2>
-                <button onClick={() => setIsSidebarOpen(false)} className="text-white/50 hover:text-white transition-colors">
-                    <X size={24} />
-                </button>
-            </div>
-
-            {/* List Item */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {cart.length === 0 ? (
-                    <div className="text-center py-20 text-arjes-muted">
-                        <Utensils size={40} className="mx-auto mb-3" />
-                        <p>Keranjang kosong. Pilih menu dulu!</p>
-                    </div>
-                ) : (
-                    cart.map(item => (
-                        <motion.div 
-                            key={item.id}
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10"
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-arjes-gold rounded-full flex items-center justify-center text-arjes-bg text-sm font-bold flex-shrink-0">
-                                    {item.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-bold">{item.name}</h4>
-                                    <p className="text-xs text-arjes-muted">{formatRupiah(item.price)}</p>
-                                </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => updateQuantity(item.id, item.qty - 1)} className="bg-black/30 p-1 rounded-full hover:bg-red-500 transition-colors">
-                                    <Minus size={14} />
-                                </button>
-                                <span className="font-bold text-sm w-4 text-center">{item.qty}</span>
-                                <button onClick={() => updateQuantity(item.id, item.qty + 1)} className="bg-black/30 p-1 rounded-full hover:bg-green-500 transition-colors">
-                                    <Plus size={14} />
-                                </button>
-                            </div>
-                        </motion.div>
-                    ))
-                )}
-            </div>
-
-            {/* Footer Total */}
-            <div className="p-6 border-t border-white/10 bg-[#0D1812]">
-                {/* Input Voucher */}
-                <div className="flex gap-2 mb-4">
-                    <input 
-                        type="text" 
-                        placeholder="Kode Voucher (Ex: UNSPROMO)"
-                        value={voucherCode}
-                        onChange={(e) => setVoucherCode(e.target.value)}
-                        className="flex-1 bg-black/30 p-3 rounded-lg border border-white/10 text-sm focus:border-arjes-gold outline-none"
-                    />
-                    <button 
-                        onClick={() => applyVoucher(voucherCode)}
-                        className="bg-arjes-gold text-arjes-bg px-4 rounded-lg text-sm font-bold"
-                    >
-                        Apply
-                    </button>
-                </div>
-                {activeVoucher && (
-                    <div className="flex justify-between text-xs text-green-400 mb-2 p-2 bg-green-900/30 rounded">
-                        <span>Voucher Applied: {activeVoucher.name}</span>
-                    </div>
-                )}
-
-
-                <div className="space-y-2">
-                    <div className="flex justify-between text-sm text-arjes-muted">
-                        <span>Subtotal:</span>
-                        <span>{formatRupiah(calculateSubtotal)}</span>
-                    </div>
-                    {calculateDiscount() > 0 && (
-                         <div className="flex justify-between text-sm text-red-400">
-                            <span>Diskon:</span>
-                            <span>- {formatRupiah(calculateDiscount())}</span>
-                        </div>
-                    )}
-                    <div className="flex justify-between text-xl font-bold pt-2 border-t border-white/20">
-                        <span>TOTAL:</span>
-                        <span className="text-arjes-gold">{formatRupiah(calculateTotal)}</span>
-                    </div>
-                </div>
-
-                <button 
-                    onClick={handleCheckout}
-                    disabled={cart.length === 0}
-                    className="w-full mt-4 py-3 bg-arjes-gold text-arjes-bg font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                    Checkout & Bayar <ArrowRight size={20} />
-                </button>
-            </div>
-        </motion.div>
-    );
 };
 
 export default Menu;
