@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useCart } from '../../context/CartContext'; // 1. IMPORT CART CONTEXT UNTUK CLEAR CART
 import { 
   Coffee, LayoutDashboard, Ticket, LogOut, Home, ChevronRight, 
   Settings, Save, Lock, X, ShoppingBag, Calendar, Menu
@@ -14,7 +15,7 @@ const formatRp = (value) => {
   }).format(value);
 };
 
-// --- SUB-KOMPONEN: MODAL DETAIL ORDER (POP-UP) ---
+// --- SUB-KOMPONEN: MODAL DETAIL ORDER ---
 const OrderDetailModal = ({ order, onClose }) => {
   if (!order) return null;
 
@@ -22,7 +23,6 @@ const OrderDetailModal = ({ order, onClose }) => {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#0F1F18] border border-white/10 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl transform scale-100">
         
-        {/* Header Modal */}
         <div className="bg-arjes-gold/10 p-6 flex justify-between items-start border-b border-white/5">
           <div>
             <h3 className="text-arjes-gold font-bold text-xl">Detail Pesanan</h3>
@@ -33,10 +33,8 @@ const OrderDetailModal = ({ order, onClose }) => {
           </button>
         </div>
 
-        {/* Body Modal */}
         <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
           
-          {/* Status */}
           <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
             <span className="text-sm text-gray-400">Status</span>
             <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
@@ -48,7 +46,6 @@ const OrderDetailModal = ({ order, onClose }) => {
             </span>
           </div>
 
-          {/* Daftar Item */}
           <div className="space-y-3">
             <p className="text-sm font-bold text-white border-b border-white/10 pb-2">Item Dipesan</p>
             {order.items.map((item, idx) => (
@@ -70,7 +67,6 @@ const OrderDetailModal = ({ order, onClose }) => {
             ))}
           </div>
 
-          {/* Info Pembayaran */}
           <div className="bg-black/20 p-4 rounded-xl space-y-2 text-sm mt-4">
              <div className="flex justify-between text-gray-400">
                 <span>Tanggal</span>
@@ -93,7 +89,7 @@ const OrderDetailModal = ({ order, onClose }) => {
 };
 
 
-// --- SUB-KOMPONEN: RIWAYAT PESANAN (LIST) ---
+// --- SUB-KOMPONEN: RIWAYAT PESANAN ---
 const OrderHistory = () => {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -201,21 +197,24 @@ const EditProfile = ({ user }) => {
 // === MAIN USER DASHBOARD ===
 const UserDashboard = () => {
   const navigate = useNavigate();
+  const { clearCart } = useCart(); // 2. AMBIL FUNGSI CLEAR CART
   const [activeTab, setActiveTab] = useState('orders'); 
   const [user, setUser] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // STATE SIDEBAR MOBILE
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (!userData) { navigate('/login'); } else { setUser(JSON.parse(userData)); }
   }, [navigate]);
 
-  // --- LOGOUT FIXED: KE HOME ---
-  // Ini logika yang sama persis dengan Admin Dashboard sekarang
+  // --- 3. LOGOUT DENGAN MEMBERSIHKAN KERANJANG ---
   const handleLogout = () => { 
-    localStorage.removeItem('token'); 
-    localStorage.removeItem('user'); 
-    navigate('/'); // <--- UBAH KE HOME
+    if(window.confirm('Apakah Anda yakin ingin keluar?')) {
+      localStorage.removeItem('token'); 
+      localStorage.removeItem('user'); 
+      clearCart(); // Kosongkan Keranjang
+      navigate('/'); // Redirect ke Home
+    }
   };
 
   if (!user) return null;
@@ -223,7 +222,6 @@ const UserDashboard = () => {
   return (
     <div className="flex h-screen bg-arjes-bg text-arjes-text overflow-hidden font-sans selection:bg-arjes-gold selection:text-black">
       
-      {/* --- OVERLAY MOBILE --- */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
@@ -242,7 +240,6 @@ const UserDashboard = () => {
               <div className="w-10 h-10 bg-arjes-gold rounded-xl flex items-center justify-center text-arjes-bg font-bold shadow-lg"><Coffee size={24} /></div>
               <h1 className="text-xl font-serif font-bold text-arjes-gold">Arjes User</h1>
            </div>
-           {/* Tombol Close di HP */}
            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white"><X size={24} /></button>
         </div>
 
@@ -273,7 +270,6 @@ const UserDashboard = () => {
       {/* --- KONTEN UTAMA --- */}
       <main className="flex-1 overflow-y-auto h-full p-6 md:p-12 relative z-10 scroll-smooth">
         
-        {/* Header Mobile (Hamburger) */}
         <div className="md:hidden flex items-center gap-4 mb-6">
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-white/10 rounded-lg text-white"><Menu size={24}/></button>
             <h1 className="text-xl font-bold text-white">Dashboard</h1>

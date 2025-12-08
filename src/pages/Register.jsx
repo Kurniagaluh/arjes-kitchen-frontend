@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { User, Mail, Lock, ArrowLeft, Loader2, Phone } from 'lucide-react';
-import api from '../api/axios'; 
 
 const Register = () => {
   const navigate = useNavigate();
-  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,38 +17,54 @@ const Register = () => {
       setFormData({...formData, [e.target.name]: e.target.value});
   }
 
-  const handleRegister = async (e) => {
+  const handleRegister = (e) => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      console.log("Mengirim data...", formData); // Debugging
+    // Simulasi Delay Loading (biar terasa seperti aplikasi beneran)
+    setTimeout(() => {
+        const { name, email, phone, password, password_confirmation } = formData;
 
-      // TEMBAK KE BACKEND LARAVEL
-      const response = await api.post('/register', {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        password: formData.password,
-        password_confirmation: formData.password_confirmation
-      });
-      
-      console.log("Respon Sukses:", response.data);
-      alert("Registrasi Berhasil! Data sudah masuk Database. Silakan Login.");
-      navigate('/login');
+        // 1. Validasi
+        if (!name || !email || !password) {
+            setLoading(false);
+            return alert("Semua data wajib diisi!");
+        }
+        if (password !== password_confirmation) {
+            setLoading(false);
+            return alert("Password dan Konfirmasi Password tidak sama!");
+        }
 
-    } catch (error) {
-      console.error("Gagal Register:", error);
-      if (error.response) {
-        // Tampilkan pesan error detail dari Laravel
-        // JSON.stringify biar pesannya kebaca semua (misal: email has been taken)
-        alert(`Gagal: ${JSON.stringify(error.response.data.message || error.response.data)}`);
-      } else {
-        alert("Backend tidak bisa dihubungi. Pastikan server nyala (port 8000)!");
-      }
-    } finally {
-      setLoading(false);
-    }
+        // 2. Ambil Database User (dari LocalStorage)
+        const existingUsers = JSON.parse(localStorage.getItem('arjes_users') || '[]');
+
+        // 3. Cek Email Kembar
+        const isExist = existingUsers.find(user => user.email === email);
+        if (isExist) {
+            setLoading(false);
+            return alert("Email ini sudah terdaftar! Silakan Login.");
+        }
+
+        // 4. Buat Data User Baru
+        const newUser = {
+            id: Date.now(),
+            name: name,
+            email: email,
+            phone: phone,
+            password: password, // Disimpan untuk pengecekan login nanti
+            role: 'user',       // Default role user biasa
+            avatar: `https://ui-avatars.com/api/?name=${name}&background=D4AF37&color=fff`
+        };
+
+        // 5. Simpan ke Database Browser
+        const updatedUsers = [...existingUsers, newUser];
+        localStorage.setItem('arjes_users', JSON.stringify(updatedUsers));
+
+        setLoading(false);
+        alert("Registrasi Berhasil! Silakan Login dengan akun baru Anda.");
+        navigate('/login');
+
+    }, 1500); // Delay 1.5 detik
   };
 
   return (
@@ -75,7 +89,7 @@ const Register = () => {
             <input 
               type="text" name="name" placeholder="Nama Lengkap" 
               onChange={handleInput} required
-              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all" 
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all placeholder:text-white/30" 
             />
           </div>
 
@@ -85,7 +99,7 @@ const Register = () => {
             <input 
               type="email" name="email" placeholder="Email" 
               onChange={handleInput} required
-              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all" 
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all placeholder:text-white/30" 
             />
           </div>
 
@@ -95,7 +109,7 @@ const Register = () => {
             <input 
               type="text" name="phone" placeholder="No. Handphone (08...)" 
               onChange={handleInput} required
-              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all" 
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all placeholder:text-white/30" 
             />
           </div>
 
@@ -105,7 +119,7 @@ const Register = () => {
             <input 
               type="password" name="password" placeholder="Password (Min 8)" 
               onChange={handleInput} required
-              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all" 
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all placeholder:text-white/30" 
             />
           </div>
 
@@ -115,12 +129,12 @@ const Register = () => {
             <input 
               type="password" name="password_confirmation" placeholder="Ulangi Password" 
               onChange={handleInput} required
-              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all" 
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-arjes-gold transition-all placeholder:text-white/30" 
             />
           </div>
 
-          <button disabled={loading} className="w-full bg-arjes-gold text-arjes-bg font-bold py-3.5 rounded-xl hover:bg-white transition-colors flex justify-center items-center gap-2 mt-2 shadow-lg shadow-arjes-gold/20">
-            {loading ? <><Loader2 className="animate-spin" /> Menghubungkan...</> : "Register Sekarang"}
+          <button disabled={loading} className="w-full bg-arjes-gold text-arjes-bg font-bold py-3.5 rounded-xl hover:bg-white transition-colors flex justify-center items-center gap-2 mt-2 shadow-lg shadow-arjes-gold/20 disabled:opacity-70">
+            {loading ? <><Loader2 className="animate-spin" /> Mendaftar...</> : "Register Sekarang"}
           </button>
         </form>
         

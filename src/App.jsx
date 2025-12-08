@@ -14,7 +14,10 @@ import Footer from './components/Footer';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Booking from './pages/Booking';
-import Menu from './pages/Menu'; 
+
+// Update: Arahkan ke folder spesifik (User vs Admin)
+import Menu from './pages/user/Menu';           // Halaman Menu Pembeli (Read Only)
+import ManageMenu from './pages/admin/ManageMenu'; // Halaman Menu Admin (CRUD)
 import Checkout from './pages/user/Checkout'; 
 
 // Import Dashboard
@@ -41,6 +44,7 @@ function App() {
 
   // --- LOGIKA MENYEMBUNYIKAN NAVBAR & FOOTER ---
   // Sembunyikan Navbar/Footer di Dashboard (Admin/User) dan Halaman Auth
+  // Tambahkan juga '/admin/menu' agar saat admin input data, tampilan full tanpa navbar publik
   const isDashboard = location.pathname.startsWith('/admin') || location.pathname.startsWith('/user');
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
@@ -62,6 +66,8 @@ function App() {
         <Routes>
           {/* A. Halaman Publik */}
           <Route path="/" element={<LandingPage />} />
+          
+          {/* Halaman Menu untuk Pembeli */}
           <Route path="/menu" element={<Menu />} /> 
           
           {/* B. Halaman Transaksi */}
@@ -73,10 +79,13 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/booking" element={<Booking />} />
 
-          {/* D. Dashboard Area (Protected) */}
+          {/* D. Dashboard Area & Admin (Protected) */}
           <Route path="/profile" element={<UserDashboard />} /> 
           <Route path="/user/dashboard" element={<UserDashboard />} />
+          
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          {/* Route Admin Input Menu (BARU) */}
+          <Route path="/admin/menu" element={<ManageMenu />} />
         </Routes>
       </div>
 

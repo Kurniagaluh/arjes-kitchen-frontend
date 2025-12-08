@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // <--- 1. IMPORT LINK
 import { 
   LayoutDashboard, ShoppingBag, Utensils, Ticket, 
   Coffee, CheckCircle, XCircle, 
-  Eye, Store, Plus, Trash2, Edit2, MapPin, 
-  TrendingUp, Users, DollarSign, Calendar, LogOut, FileText, Upload, ChevronDown, Filter, Menu, X
+  Eye, Store, Plus, Trash2, MapPin, 
+  DollarSign, Calendar, LogOut, FileText, Upload, Filter, Menu, X, ArrowRight
 } from 'lucide-react';
 
 // --- HELPER FORMAT RUPIAH ---
@@ -16,11 +16,11 @@ const formatRp = (value) => {
   }).format(value);
 };
 
-// --- KOMPONEN KARTU STATISTIK (REVENUE) - RESPONSIVE ---
+// --- KOMPONEN KARTU STATISTIK (REVENUE) ---
 const RevenueCard = ({ title, value, subtext, color }) => (
   <div className="bg-[#0F1F18] border border-white/10 p-6 md:p-8 rounded-3xl relative overflow-hidden group shadow-xl transition-all hover:border-arjes-gold/30">
     <div className={`absolute -right-6 -top-6 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${color} transform rotate-12`}>
-        <DollarSign size={100} md:size={120} />
+        <DollarSign size={100} />
     </div>
     <div className="relative z-10">
         <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
@@ -32,7 +32,7 @@ const RevenueCard = ({ title, value, subtext, color }) => (
   </div>
 );
 
-// --- 1. MODAL BUKTI TRANSFER (RESPONSIVE) ---
+// --- MODAL BUKTI TRANSFER ---
 const ProofModal = ({ order, onClose }) => {
   if (!order) return null;
   return (
@@ -57,77 +57,16 @@ const ProofModal = ({ order, onClose }) => {
   );
 };
 
-// --- 2. MODAL TAMBAH MENU (UPLOAD FILE) - RESPONSIVE ---
-const AddMenuModal = ({ onClose, onSave }) => {
-    const [newItem, setNewItem] = useState({ name: '', price: '', category: 'food', desc: '', image: null, preview: '' });
-
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const previewUrl = URL.createObjectURL(file);
-            setNewItem({ ...newItem, image: file, preview: previewUrl });
-        }
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        const finalImage = newItem.preview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80';
-        onSave({ ...newItem, id: Date.now(), price: Number(newItem.price), image: finalImage, active: true });
-    };
-
-    return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-            <div className="bg-[#0F1F18] border border-white/10 rounded-2xl p-6 md:p-8 w-full max-w-sm shadow-2xl overflow-y-auto max-h-[90vh]">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-white">Tambah Menu</h3>
-                    <button onClick={onClose}><XCircle size={24} className="text-gray-400 hover:text-white transition-colors"/></button>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-arjes-gold transition-colors" placeholder="Nama Menu" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required />
-                    
-                    <textarea className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-arjes-gold transition-colors text-sm" placeholder="Deskripsi singkat..." rows="2" value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} required />
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                        <input type="number" className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-arjes-gold transition-colors" placeholder="Harga (Rp)" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} required />
-                        <select className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none cursor-pointer" value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})}>
-                            <option value="food">Makanan</option>
-                            <option value="coffee">Coffee</option>
-                            <option value="snack">Snack</option>
-                        </select>
-                    </div>
-
-                    {/* INPUT FILE UPLOAD */}
-                    <div className="border border-dashed border-white/20 rounded-xl p-4 text-center cursor-pointer hover:bg-white/5 relative group transition-all">
-                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                        {newItem.preview ? (
-                            <img src={newItem.preview} alt="Preview" className="h-24 w-full object-cover rounded-lg mx-auto" />
-                        ) : (
-                            <div className="text-gray-400 text-xs flex flex-col items-center group-hover:text-arjes-gold transition-colors">
-                                <Upload size={24} className="mb-2" />
-                                <span>Klik untuk Upload Gambar</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <button className="w-full bg-arjes-gold text-arjes-bg font-bold py-3.5 rounded-xl mt-4 hover:bg-white transition-all shadow-lg shadow-arjes-gold/20">Simpan Menu</button>
-                </form>
-            </div>
-        </div>
-    );
-};
-
 // === MAIN DASHBOARD ===
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('orders'); 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // State untuk Sidebar Mobile
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
   // Data State
   const [orders, setOrders] = useState([]);
-  const [menuItems, setMenuItems] = useState([
-    { id: 1, name: 'Kopi Susu Gula Aren', desc: 'Espresso blend dengan gula aren asli.', price: 18000, category: 'coffee', image: 'https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500&q=80', active: true },
-    { id: 2, name: 'Nasi Goreng Arjes', desc: 'Nasi goreng spesial dengan topping sate.', price: 25000, category: 'food', image: 'https://images.unsplash.com/photo-1603133872878-684f57143b34?w=500&q=80', active: true },
-  ]);
+  // (State Menu lama dihapus karena sudah pindah ke ManageMenu.jsx)
+  
   const [tables, setTables] = useState([
     { id: 'T1', type: 'Reguler', status: 'available' }, { id: 'T2', type: 'Reguler', status: 'occupied' },  
     { id: 'T3', type: 'VIP', status: 'booked' }, { id: 'T4', type: 'Reguler', status: 'available' },
@@ -141,7 +80,6 @@ const AdminDashboard = () => {
 
   // Modal States
   const [selectedProof, setSelectedProof] = useState(null);
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [newVoucher, setNewVoucher] = useState({ code: '', type: 'percentage', value: '', minSpend: '' });
 
   useEffect(() => {
@@ -160,9 +98,6 @@ const AdminDashboard = () => {
     setTables(tables.map(t => t.id === id ? { ...t, status: status } : t));
   };
 
-  const deleteMenu = (id) => { if(confirm('Hapus menu ini?')) setMenuItems(menuItems.filter(m => m.id !== id)); };
-  const addMenu = (item) => { setMenuItems([...menuItems, item]); setShowAddMenu(false); };
-  
   const addVoucher = (e) => {
     e.preventDefault();
     if (!newVoucher.code || !newVoucher.value) return;
@@ -199,7 +134,7 @@ const AdminDashboard = () => {
       else label = "Total Keseluruhan";
 
       const baseTotal = filtered.reduce((acc, curr) => acc + (curr.total || 0), 0);
-      // Simulasi angka berbeda tiap filter agar terlihat bedanya saat demo
+      // Simulasi angka
       const total = revenueFilter === 'today' ? baseTotal : 
                     revenueFilter === 'week' ? baseTotal * 7 : 
                     revenueFilter === 'month' ? baseTotal * 30 : 
@@ -212,11 +147,10 @@ const AdminDashboard = () => {
   const revenueData = getFilteredRevenue();
   const pendingCount = orders.filter(o => o.status === 'Menunggu Verifikasi' || o.status === 'Menunggu Pembayaran').length;
 
-  // --- LOGOUT FIXED: KE HOME ---
   const handleLogout = () => { 
       localStorage.removeItem('token'); 
       localStorage.removeItem('user'); 
-      navigate('/'); // <--- UBAH KE HOME
+      navigate('/'); 
   };
 
   return (
@@ -230,7 +164,7 @@ const AdminDashboard = () => {
         ></div>
       )}
 
-      {/* --- SIDEBAR ADMIN RESPONSIVE --- */}
+      {/* --- SIDEBAR ADMIN --- */}
       <aside className={`
         fixed top-0 left-0 z-50 h-full w-64 bg-[#0F1F18] border-r border-white/5 flex flex-col shadow-2xl transition-transform duration-300
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -243,7 +177,6 @@ const AdminDashboard = () => {
              </div>
              <h1 className="text-xl font-serif font-bold text-white tracking-wide">Arjes Admin</h1>
           </div>
-          {/* Tombol Close di HP */}
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white">
             <X size={24} />
           </button>
@@ -282,7 +215,7 @@ const AdminDashboard = () => {
       {/* --- KONTEN UTAMA --- */}
       <main className="flex-1 overflow-y-auto h-full p-4 md:p-12 relative z-10 scroll-smooth">
         
-        {/* HEADER RESPONSIVE (ADA HAMBURGER) */}
+        {/* HEADER RESPONSIVE */}
         <div className="mb-8 flex items-center gap-4">
             <button 
                 onClick={() => setIsSidebarOpen(true)} 
@@ -291,7 +224,6 @@ const AdminDashboard = () => {
                 <Menu size={24} />
             </button>
             
-            {/* Hanya Tampilkan Judul jika BUKAN tab Revenue (karena Revenue punya header khusus) */}
             {activeTab !== 'revenue' && (
                 <h2 className="text-2xl md:text-3xl font-serif font-bold text-white">
                     {activeTab === 'orders' && 'Pesanan Masuk'}
@@ -305,7 +237,6 @@ const AdminDashboard = () => {
         {/* --- 1. TAB PESANAN MASUK --- */}
         {activeTab === 'orders' && (
             <div className="bg-[#0F1F18] border border-white/10 rounded-3xl overflow-hidden shadow-2xl animate-in fade-in">
-                {/* Wrapper agar tabel bisa discroll di HP */}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[900px] md:min-w-0">
                         <thead className="bg-black/30 text-gray-400 text-xs uppercase tracking-wider font-bold">
@@ -354,15 +285,11 @@ const AdminDashboard = () => {
             </div>
         )}
 
-        {/* --- 2. TAB PENDAPATAN (DROPDOWN + DATE INFO) --- */}
+        {/* --- 2. TAB PENDAPATAN --- */}
         {activeTab === 'revenue' && (
             <div className="space-y-6 animate-in fade-in">
-                
-                {/* HEADER PENDAPATAN KHUSUS */}
                 <div className="mb-6">
                     <h2 className="text-2xl md:text-3xl font-serif font-bold text-white mb-4">Laporan Pendapatan</h2>
-                    
-                    {/* CONTROLS RESPONSIVE */}
                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                         <div className="relative w-full sm:w-auto">
                             <select 
@@ -378,8 +305,6 @@ const AdminDashboard = () => {
                             </select>
                             <Filter size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
                         </div>
-                        
-                        {/* KETERANGAN TANGGAL */}
                         <div className="flex items-center gap-2 px-4 py-2.5 bg-white/5 rounded-xl text-sm border border-white/5 w-full sm:w-auto">
                             <Calendar size={16} className="text-arjes-gold" />
                             <span className="text-gray-300 font-medium">{getDateRangeLabel(revenueFilter)}</span>
@@ -388,18 +313,8 @@ const AdminDashboard = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <RevenueCard 
-                        title={`Pendapatan (${revenueData.label})`} 
-                        value={formatRp(revenueData.total)} 
-                        color="green" 
-                        subtext="Akumulasi total pesanan selesai."
-                    />
-                     <RevenueCard 
-                        title={`Transaksi (${revenueData.label})`} 
-                        value={`${revenueData.count} Order`} 
-                        color="white" 
-                        subtext="Jumlah transaksi berhasil."
-                    />
+                    <RevenueCard title={`Pendapatan (${revenueData.label})`} value={formatRp(revenueData.total)} color="green" subtext="Akumulasi total pesanan selesai." />
+                    <RevenueCard title={`Transaksi (${revenueData.label})`} value={`${revenueData.count} Order`} color="white" subtext="Jumlah transaksi berhasil." />
                 </div>
 
                 <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden">
@@ -425,7 +340,7 @@ const AdminDashboard = () => {
             </div>
         )}
 
-        {/* --- 3. TAB MANAJEMEN MEJA (LIST + DROPDOWN) --- */}
+        {/* --- 3. TAB MANAJEMEN MEJA --- */}
         {activeTab === 'tables' && (
             <div className="animate-in fade-in">
                 <div className="bg-[#0F1F18] border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
@@ -438,30 +353,21 @@ const AdminDashboard = () => {
                             <tbody className="divide-y divide-white/5 text-sm text-gray-300">
                                 {tables.map(table => (
                                     <tr key={table.id} className="hover:bg-white/5 transition-colors">
+                                        <td className="px-6 py-5"><span className="text-xl font-serif font-bold text-white">{table.id}</span></td>
+                                        <td className="px-6 py-5"><span className="text-xs uppercase font-bold tracking-widest opacity-70 border border-white/20 px-2 py-1 rounded">{table.type}</span></td>
                                         <td className="px-6 py-5">
-                                            <span className="text-xl font-serif font-bold text-white">{table.id}</span>
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <span className="text-xs uppercase font-bold tracking-widest opacity-70 border border-white/20 px-2 py-1 rounded">{table.type}</span>
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <div className="relative w-fit">
-                                                <select 
-                                                    value={table.status} 
-                                                    onChange={(e) => updateTableStatus(table.id, e.target.value)}
-                                                    className={`
-                                                        pl-3 pr-8 py-2 rounded-lg text-xs font-bold outline-none cursor-pointer border border-white/10 appearance-none transition-all
-                                                        ${table.status === 'available' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 
-                                                          table.status === 'occupied' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 
-                                                          'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}
-                                                    `}
-                                                >
-                                                    <option value="available" className="bg-[#0F1F18] text-green-400">🟢 Kosong (Available)</option>
-                                                    <option value="occupied" className="bg-[#0F1F18] text-red-400">🔴 Makan (Occupied)</option>
-                                                    <option value="booked" className="bg-[#0F1F18] text-yellow-400">🟡 Booked (Reserved)</option>
-                                                </select>
-                                                <ChevronDown size={14} className="absolute right-2 top-2.5 pointer-events-none opacity-70" />
-                                            </div>
+                                            <select 
+                                                value={table.status} 
+                                                onChange={(e) => updateTableStatus(table.id, e.target.value)}
+                                                className={`pl-3 pr-8 py-2 rounded-lg text-xs font-bold outline-none cursor-pointer border border-white/10 appearance-none transition-all
+                                                    ${table.status === 'available' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 
+                                                      table.status === 'occupied' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 
+                                                      'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}`}
+                                            >
+                                                <option value="available" className="bg-[#0F1F18] text-green-400">🟢 Kosong (Available)</option>
+                                                <option value="occupied" className="bg-[#0F1F18] text-red-400">🔴 Makan (Occupied)</option>
+                                                <option value="booked" className="bg-[#0F1F18] text-yellow-400">🟡 Booked (Reserved)</option>
+                                            </select>
                                         </td>
                                     </tr>
                                 ))}
@@ -472,26 +378,33 @@ const AdminDashboard = () => {
             </div>
         )}
 
-        {/* --- 4. TAB MANAJEMEN MENU --- */}
+        {/* --- 4. TAB MANAJEMEN MENU (VERSI BARU - LINK KE HALAMAN KHUSUS) --- */}
         {activeTab === 'menu' && (
-            <div className="space-y-8 animate-in fade-in">
-                <button onClick={() => setShowAddMenu(true)} className="w-full md:w-auto bg-arjes-gold text-arjes-bg px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-white transition-colors shadow-lg"><Plus size={18}/> Tambah Menu Baru</button>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {menuItems.map(item => (
-                        <div key={item.id} className="bg-[#0F1F18] border border-white/10 p-4 rounded-3xl flex gap-4 group hover:border-arjes-gold/50 transition-all shadow-lg">
-                            <div className="w-24 h-24 bg-white/5 rounded-xl overflow-hidden flex-shrink-0">
-                                <img src={item.image || "https://via.placeholder.com/150"} alt={item.name} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-white text-lg leading-tight truncate">{item.name}</h4>
-                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.desc}</p>
-                                <p className="text-arjes-gold font-mono mt-2 font-bold">{formatRp(item.price)}</p>
-                            </div>
-                            <button onClick={() => deleteMenu(item.id)} className="self-start text-red-400 hover:text-red-300"><Trash2 size={18}/></button>
-                        </div>
-                    ))}
+            <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
+                <div className="bg-white/5 p-6 rounded-full border border-white/5">
+                    <Utensils size={48} className="text-arjes-gold" />
                 </div>
-                {showAddMenu && <AddMenuModal onClose={() => setShowAddMenu(false)} onSave={addMenu} />}
+                <div>
+                    <h3 className="text-2xl font-bold text-white">Kelola Menu Restoran</h3>
+                    <p className="text-gray-400 mt-2 max-w-md mx-auto">
+                        Masuk ke halaman manajemen menu tingkat lanjut untuk menambah, mengedit, atau menghapus menu.
+                    </p>
+                </div>
+                
+                {/* --- TOMBOL YANG DIMINTA --- */}
+                <Link 
+                  to="/admin/menu" 
+                  className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-arjes-gold text-[#0F1F18] group-hover:scale-110 transition-transform">
+                    <Utensils size={24} />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="font-bold text-white group-hover:text-arjes-gold transition-colors">Buka Manajemen Menu</h3>
+                    <p className="text-sm text-gray-500">Tambah & Hapus Makanan</p>
+                  </div>
+                  <ArrowRight className="ml-4 text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1 transition-all" />
+                </Link>
             </div>
         )}
 
