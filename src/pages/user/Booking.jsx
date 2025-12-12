@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, Users, CheckCircle, Info, ArrowRight, Wallet } from 'lucide-react'; // Ganti Sparkles jadi Wallet
-import { useCart } from '../context/CartContext'; 
+import { useCart } from '../../context/CartContext'; 
 
 const Booking = () => {
   const navigate = useNavigate();
