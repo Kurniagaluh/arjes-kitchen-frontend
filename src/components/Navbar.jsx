@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Coffee, ShoppingBag, LogOut, LayoutDashboard, User as UserIcon, ChevronDown, Menu as MenuIcon, X, Settings } from 'lucide-react';
-import { useCart } from '../context/CartContext'; 
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext'; // ✅ Import AuthContext
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation(); 
   const { cart } = useCart();
+  const { user, logout, isAuthenticated } = useAuth(); // ✅ Gunakan dari AuthContext
   
-  const [user, setUser] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -17,14 +18,9 @@ const Navbar = () => {
 
   const totalItems = cart.reduce((total, item) => total + item.qty, 0);
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-  }, []);
+  // Hapus useEffect yang mengambil user dari localStorage karena sudah dari AuthContext
 
-  // --- LOGIKA SCROLL & URL (SAMA SEPERTI SEBELUMNYA) ---
+  // --- LOGIKA SCROLL & URL ---
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -33,6 +29,7 @@ const Navbar = () => {
         else setActiveSection('home');
       }
     };
+    
     const path = location.pathname;
     if (path === '/menu') setActiveSection('menu');
     else if (path === '/booking') setActiveSection('booking');
@@ -41,6 +38,7 @@ const Navbar = () => {
     } else {
        setActiveSection(''); 
     }
+    
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [location.pathname]);
@@ -51,11 +49,9 @@ const Navbar = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
+    logout(); // ✅ Gunakan logout dari AuthContext
     setDropdownOpen(false);
-    navigate('/login');
+    navigate('/');
   };
 
   const getUnderlineClass = (section) => activeSection === section ? 'w-full' : 'w-0 group-hover:w-full';
@@ -123,8 +119,8 @@ const Navbar = () => {
             )}
           </Link>
 
-          {/* --- BAGIAN PROFIL USER BARU (CLEAN VERSION) --- */}
-          {user ? (
+          {/* --- BAGIAN PROFIL USER --- */}
+          {isAuthenticated && user ? (
             <div className="relative">
               <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-2 pl-2 pr-1 py-1 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all focus:outline-none">
                 <div className="w-8 h-8 bg-arjes-gold rounded-full flex items-center justify-center text-arjes-bg font-bold text-sm border-2 border-arjes-bg">
@@ -141,10 +137,9 @@ const Navbar = () => {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.2 }}
-                    // --- WARNA BACKGROUND GELAP (PENTING!) ---
-                    className="absolute right-0 mt-3 w-64 bg-[#0F1F18] border border-white/10 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl ring-1 ring-black/5"
+                    className="absolute right-0 mt-3 w-64 bg-[#0F1F18] border border-white/10 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl ring-1 ring-black/5 z-50"
                   >
-                    {/* Header Info User (Tanpa Badge Member) */}
+                    {/* Header Info User */}
                     <div className="px-5 py-4 border-b border-white/10 bg-white/5">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-arjes-gold rounded-full flex items-center justify-center text-arjes-bg font-bold text-lg shadow-lg">
@@ -153,13 +148,15 @@ const Navbar = () => {
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-white truncate">{user.name}</p>
                             <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                            <span className={`mt-1 inline-block text-xs px-2 py-0.5 rounded-full ${user.role === 'admin' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                              {user.role === 'admin' ? 'Admin' : 'User'}
+                            </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Menu Links (Sesuai Request) */}
+                    {/* Menu Links */}
                     <div className="p-2 space-y-1">
-                       
                        {/* 1. Dashboard */}
                        <Link 
                             to={user.role === 'admin' ? "/admin/dashboard" : "/user/dashboard"} 
@@ -174,7 +171,7 @@ const Navbar = () => {
                        
                        {/* 2. Edit Profil */}
                        <Link 
-                            to="/user/dashboard" // Sementara arahkan ke dashboard juga
+                            to="/user/dashboard?tab=profile" 
                             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-all group"
                             onClick={() => setDropdownOpen(false)}
                        >
@@ -206,14 +203,21 @@ const Navbar = () => {
             </div>
           )}
 
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white hover:text-arjes-gold transition-colors">{mobileMenuOpen ? <X size={24}/> : <MenuIcon size={24}/>}</button>
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white hover:text-arjes-gold transition-colors">
+            {mobileMenuOpen ? <X size={24}/> : <MenuIcon size={24}/>}
+          </button>
         </div>
       </div>
       
       {/* MOBILE MENU */}
       <AnimatePresence>
         {mobileMenuOpen && (
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="absolute top-24 left-4 right-4 bg-arjes-bg/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col gap-4 text-white shadow-2xl md:hidden">
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              exit={{ opacity: 0, y: -20 }} 
+              className="absolute top-24 left-4 right-4 bg-arjes-bg/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col gap-4 text-white shadow-2xl md:hidden z-50"
+            >
                 <Link to="/" onClick={() => { scrollToTop(); setMobileMenuOpen(false); }} className={getTextClass('home')}>Home</Link>
                 <Link to="/menu" onClick={() => setMobileMenuOpen(false)} className={getTextClass('menu')}>Menu</Link>
                 <Link to="/booking" onClick={() => setMobileMenuOpen(false)} className={getTextClass('booking')}>Booking</Link>
