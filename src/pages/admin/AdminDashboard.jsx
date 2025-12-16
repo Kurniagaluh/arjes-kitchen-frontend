@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom'; // <--- 1. IMPORT LINK
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import VoucherAdminPage from './VoucherAdminPage';
 import { 
   LayoutDashboard, ShoppingBag, Utensils, Ticket, 
   Coffee, CheckCircle, XCircle, 
   Eye, Store, Plus, Trash2, MapPin, 
-  DollarSign, Calendar, LogOut, FileText, Upload, Filter, Menu, X, ArrowRight
+  DollarSign, Calendar, LogOut, FileText, Upload, Filter, Menu, X, ArrowRight,
+  Table // ✅ Tambahkan icon Table
 } from 'lucide-react';
 
 // --- HELPER FORMAT RUPIAH ---
@@ -16,7 +19,7 @@ const formatRp = (value) => {
   }).format(value);
 };
 
-// --- KOMPONEN KARTU STATISTIK (REVENUE) ---
+// --- KOMPONEN KARTU STATISTIK ---
 const RevenueCard = ({ title, value, subtext, color }) => (
   <div className="bg-[#0F1F18] border border-white/10 p-6 md:p-8 rounded-3xl relative overflow-hidden group shadow-xl transition-all hover:border-arjes-gold/30">
     <div className={`absolute -right-6 -top-6 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${color} transform rotate-12`}>
@@ -60,27 +63,18 @@ const ProofModal = ({ order, onClose }) => {
 // === MAIN DASHBOARD ===
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
+  
   const [activeTab, setActiveTab] = useState('orders'); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
   // Data State
   const [orders, setOrders] = useState([]);
-  // (State Menu lama dihapus karena sudah pindah ke ManageMenu.jsx)
-  
-  const [tables, setTables] = useState([
-    { id: 'T1', type: 'Reguler', status: 'available' }, { id: 'T2', type: 'Reguler', status: 'occupied' },  
-    { id: 'T3', type: 'VIP', status: 'booked' }, { id: 'T4', type: 'Reguler', status: 'available' },
-    { id: 'T5', type: 'VIP', status: 'available' }, { id: 'T6', type: 'Reguler', status: 'available' },
-    { id: 'T7', type: 'Reguler', status: 'available' }, { id: 'T8', type: 'VIP', status: 'booked' },
-  ]);
-  const [vouchers, setVouchers] = useState([{ id: 1, code: 'ARJES20', type: 'percentage', value: 20, minSpend: 50000 }]);
-
-  // Filter State (Pendapatan)
+  // Filter State
   const [revenueFilter, setRevenueFilter] = useState('today');
 
   // Modal States
   const [selectedProof, setSelectedProof] = useState(null);
-  const [newVoucher, setNewVoucher] = useState({ code: '', type: 'percentage', value: '', minSpend: '' });
 
   useEffect(() => {
     const savedOrders = JSON.parse(localStorage.getItem('arjes_orders') || '[]');
@@ -94,18 +88,7 @@ const AdminDashboard = () => {
     localStorage.setItem('arjes_orders', JSON.stringify(updated));
   };
 
-  const updateTableStatus = (id, status) => {
-    setTables(tables.map(t => t.id === id ? { ...t, status: status } : t));
-  };
-
-  const addVoucher = (e) => {
-    e.preventDefault();
-    if (!newVoucher.code || !newVoucher.value) return;
-    const voucherData = { id: Date.now(), code: newVoucher.code.toUpperCase(), type: newVoucher.type, value: Number(newVoucher.value), minSpend: Number(newVoucher.minSpend) || 0 };
-    setVouchers([...vouchers, voucherData]);
-    setNewVoucher({ code: '', type: 'percentage', value: '', minSpend: '' });
-  };
-  const deleteVoucher = (id) => { if(confirm('Hapus voucher?')) setVouchers(vouchers.filter(v => v.id !== id)); };
+  
 
   // --- HELPER UNTUK MENDAPATKAN LABEL TANGGAL ---
   const getDateRangeLabel = (filter) => {
@@ -125,7 +108,6 @@ const AdminDashboard = () => {
   // --- LOGIKA FILTER PENDAPATAN ---
   const getFilteredRevenue = () => {
       const finished = orders.filter(o => o.status === 'Selesai');
-      let filtered = finished;
       let label = "";
       if (revenueFilter === 'today') label = "Hari Ini";
       else if (revenueFilter === 'week') label = "Minggu Ini";
@@ -133,14 +115,14 @@ const AdminDashboard = () => {
       else if (revenueFilter === 'year') label = "Tahun Ini";
       else label = "Total Keseluruhan";
 
-      const baseTotal = filtered.reduce((acc, curr) => acc + (curr.total || 0), 0);
+      const baseTotal = finished.reduce((acc, curr) => acc + (curr.total || 0), 0);
       // Simulasi angka
       const total = revenueFilter === 'today' ? baseTotal : 
                     revenueFilter === 'week' ? baseTotal * 7 : 
                     revenueFilter === 'month' ? baseTotal * 30 : 
                     revenueFilter === 'year' ? baseTotal * 365 : baseTotal * 500;
       
-      const count = revenueFilter === 'today' ? filtered.length : filtered.length * 5; 
+      const count = revenueFilter === 'today' ? finished.length : finished.length * 5; 
       return { total, count, label };
   };
 
@@ -148,9 +130,7 @@ const AdminDashboard = () => {
   const pendingCount = orders.filter(o => o.status === 'Menunggu Verifikasi' || o.status === 'Menunggu Pembayaran').length;
 
   const handleLogout = () => { 
-      localStorage.removeItem('token'); 
-      localStorage.removeItem('user'); 
-      navigate('/'); 
+    logout();
   };
 
   return (
@@ -175,7 +155,10 @@ const AdminDashboard = () => {
              <div className="w-10 h-10 bg-arjes-gold rounded-xl flex items-center justify-center text-arjes-bg font-bold shadow-lg">
                 <Coffee size={24} />
              </div>
-             <h1 className="text-xl font-serif font-bold text-white tracking-wide">Arjes Admin</h1>
+             <div>
+               <h1 className="text-xl font-serif font-bold text-white tracking-wide">Arjes Admin</h1>
+               <p className="text-xs text-gray-400">{user?.email}</p>
+             </div>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white">
             <X size={24} />
@@ -186,7 +169,6 @@ const AdminDashboard = () => {
           {[
             { id: 'orders', label: 'Pesanan Masuk', icon: ShoppingBag, count: pendingCount },
             { id: 'revenue', label: 'Pendapatan', icon: FileText },
-            { id: 'tables', label: 'Status Meja', icon: MapPin },
             { id: 'menu', label: 'Daftar Menu', icon: Utensils },
             { id: 'vouchers', label: 'Kode Promo', icon: Ticket },
           ].map((item) => (
@@ -203,6 +185,17 @@ const AdminDashboard = () => {
               {item.count > 0 && <span className="ml-auto bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse">{item.count}</span>}
             </button>
           ))}
+          
+          {/* Link ke Halaman Manajemen Meja Lengkap */}
+          <Link 
+            to="/admin/tables"
+            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white hover:translate-x-1 transition-all group"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <Table size={18} />
+            <span>Manajemen Meja</span>
+            <ArrowRight size={16} className="ml-auto text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1" />
+          </Link>
         </nav>
 
         <div className="p-6 border-t border-white/5 mt-auto">
@@ -340,45 +333,48 @@ const AdminDashboard = () => {
             </div>
         )}
 
-        {/* --- 3. TAB MANAJEMEN MEJA --- */}
+        {/* --- 3. TAB MANAJEMEN MEJA (MENU LINK KE HALAMAN KHUSUS) --- */}
         {activeTab === 'tables' && (
-            <div className="animate-in fade-in">
-                <div className="bg-[#0F1F18] border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
-                    <div className="p-6 border-b border-white/10"><h3 className="font-bold text-white">Daftar Status Meja</h3></div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left min-w-[600px] md:min-w-0">
-                            <thead className="bg-black/30 text-gray-400 text-xs uppercase tracking-wider font-bold">
-                                <tr><th className="px-6 py-5">Nomor Meja</th><th className="px-6 py-5">Tipe</th><th className="px-6 py-5">Status Saat Ini (Ubah Disini)</th></tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5 text-sm text-gray-300">
-                                {tables.map(table => (
-                                    <tr key={table.id} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-6 py-5"><span className="text-xl font-serif font-bold text-white">{table.id}</span></td>
-                                        <td className="px-6 py-5"><span className="text-xs uppercase font-bold tracking-widest opacity-70 border border-white/20 px-2 py-1 rounded">{table.type}</span></td>
-                                        <td className="px-6 py-5">
-                                            <select 
-                                                value={table.status} 
-                                                onChange={(e) => updateTableStatus(table.id, e.target.value)}
-                                                className={`pl-3 pr-8 py-2 rounded-lg text-xs font-bold outline-none cursor-pointer border border-white/10 appearance-none transition-all
-                                                    ${table.status === 'available' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 
-                                                      table.status === 'occupied' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 
-                                                      'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}`}
-                                            >
-                                                <option value="available" className="bg-[#0F1F18] text-green-400">🟢 Kosong (Available)</option>
-                                                <option value="occupied" className="bg-[#0F1F18] text-red-400">🔴 Makan (Occupied)</option>
-                                                <option value="booked" className="bg-[#0F1F18] text-yellow-400">🟡 Booked (Reserved)</option>
-                                            </select>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+            <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
+                <div className="bg-white/5 p-6 rounded-full border border-white/5">
+                    <Table size={48} className="text-arjes-gold" />
+                </div>
+                <div>
+                    <h3 className="text-2xl font-bold text-white">Manajemen Meja Restoran</h3>
+                    <p className="text-gray-400 mt-2 max-w-md mx-auto">
+                        Masuk ke halaman manajemen meja tingkat lanjut untuk menambah, mengedit, atau menghapus meja dan tipe meja.
+                    </p>
+                </div>
+                
+                <Link 
+                  to="/admin/tables" 
+                  className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-arjes-gold text-[#0F1F18] group-hover:scale-110 transition-transform">
+                    <Table size={24} />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="font-bold text-white group-hover:text-arjes-gold transition-colors">Buka Manajemen Meja</h3>
+                    <p className="text-sm text-gray-500">Kelola Meja & Tipe Meja</p>
+                  </div>
+                  <ArrowRight className="ml-4 text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1 transition-all" />
+                </Link>
+                
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <p className="text-sm text-gray-400">Total Meja</p>
+                    <p className="text-2xl font-bold text-white mt-1">8</p>
+                  </div>
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                    <p className="text-sm text-gray-400">Tersedia</p>
+                    <p className="text-2xl font-bold text-green-400 mt-1">5</p>
+                  </div>
                 </div>
             </div>
         )}
 
-        {/* --- 4. TAB MANAJEMEN MENU (VERSI BARU - LINK KE HALAMAN KHUSUS) --- */}
+        {/* --- 4. TAB MANAJEMEN MENU --- */}
         {activeTab === 'menu' && (
             <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
                 <div className="bg-white/5 p-6 rounded-full border border-white/5">
@@ -391,7 +387,6 @@ const AdminDashboard = () => {
                     </p>
                 </div>
                 
-                {/* --- TOMBOL YANG DIMINTA --- */}
                 <Link 
                   to="/admin/menu" 
                   className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
@@ -410,32 +405,8 @@ const AdminDashboard = () => {
 
         {/* --- 5. TAB PROMO VOUCHER --- */}
         {activeTab === 'vouchers' && (
-            <div className="space-y-8 animate-in fade-in">
-                <div className="bg-[#0F1F18] p-6 md:p-8 rounded-3xl border border-white/10 shadow-xl">
-                    <h3 className="font-bold text-white mb-6 text-xl">Buat Voucher Baru</h3>
-                    <form onSubmit={addVoucher} className="grid gap-6 md:grid-cols-5 items-end">
-                        <div className="col-span-1"><label className="text-xs text-gray-400 mb-2 block font-bold">KODE</label><input type="text" className="bg-black/30 p-3 rounded-xl text-white border border-white/10 w-full outline-none focus:border-arjes-gold uppercase" value={newVoucher.code} onChange={e => setNewVoucher({...newVoucher, code: e.target.value.toUpperCase()})} required placeholder="MABA25" /></div>
-                        <div className="col-span-1"><label className="text-xs text-gray-400 mb-2 block font-bold">TIPE</label><select className="bg-black/30 p-3 rounded-xl text-white border border-white/10 w-full outline-none" value={newVoucher.type} onChange={e => setNewVoucher({...newVoucher, type: e.target.value})}><option value="percentage">Diskon %</option><option value="fixed">Potongan Rp</option></select></div>
-                        <div className="col-span-1"><label className="text-xs text-gray-400 mb-2 block font-bold">NILAI</label><input type="number" className="bg-black/30 p-3 rounded-xl text-white border border-white/10 w-full outline-none focus:border-arjes-gold" value={newVoucher.value} onChange={e => setNewVoucher({...newVoucher, value: e.target.value})} required placeholder="10" /></div>
-                        <div className="col-span-1"><label className="text-xs text-gray-400 mb-2 block font-bold">MIN BELANJA</label><input type="number" className="bg-black/30 p-3 rounded-xl text-white border border-white/10 w-full outline-none focus:border-arjes-gold" value={newVoucher.minSpend} onChange={e => setNewVoucher({...newVoucher, minSpend: e.target.value})} required placeholder="50000" /></div>
-                        <div className="col-span-1"><button className="bg-arjes-gold text-arjes-bg font-bold p-3 rounded-xl w-full hover:bg-white transition-all">Simpan</button></div>
-                    </form>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {vouchers.map(v => (
-                        <div key={v.id} className="bg-gradient-to-br from-white/10 to-transparent border border-white/10 p-6 rounded-3xl flex justify-between items-center shadow-lg">
-                            <div>
-                                <h4 className="text-arjes-gold font-mono font-bold text-3xl tracking-wider">{v.code}</h4>
-                                <p className="text-white text-sm mt-1">{v.type === 'percentage' ? `Diskon ${v.value}%` : `Potongan ${formatRp(v.value)}`}</p>
-                                <p className="text-xs text-gray-500 mt-2">Min. Belanja: {formatRp(v.minSpend)}</p>
-                            </div>
-                            <button onClick={() => deleteVoucher(v.id)} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all border border-red-500/20"><Trash2 size={20}/></button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )}
-
+         <VoucherAdminPage />
+         )}
       </main>
     </div>
   );

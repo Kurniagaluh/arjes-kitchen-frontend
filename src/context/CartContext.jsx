@@ -23,17 +23,29 @@ export const CartProvider = ({ children }) => {
   }, [cartItems]);
 
   // --- ACTIONS ---
-  const addToCart = (product) => {
-    const price = Number(product.price);
-    setCartItems((prev) => {
-      const existing = prev.find((i) => i.id === product.id);
-      if (existing) {
-        return prev.map((i) => i.id === product.id ? { ...i, qty: i.qty + 1 } : i);
-      }
-      return [...prev, { ...product, price: price, qty: 1 }];
-    });
-    alert("Berhasil masuk keranjang! 🛒");
-  };
+const addToCart = (product) => {  
+  const existingItem = cart.find(item => item.id === product.id);
+  
+  if (existingItem) {
+    // Cek stok
+    if (product.stock && existingItem.qty >= product.stock) {
+      alert(`⚠️ Stok ${product.name} terbatas. Hanya tersisa ${product.stock}`);
+      return;
+    } 
+    
+    setCart(cart.map(item =>
+      item.id === product.id
+        ? { ...item, qty: item.qty + 1 }
+        : item
+    ));
+  } else {
+    setCart([...cart, { 
+      ...product, 
+      qty: 1,
+      menu_id: product.menu_id || product.id // Pastikan menu_id ada
+    }]);
+  }
+};
 
   const decreaseQty = (itemId) => {
     setCartItems((prev) => {

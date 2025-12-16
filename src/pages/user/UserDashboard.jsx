@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useCart } from '../../context/CartContext'; // 1. IMPORT CART CONTEXT UNTUK CLEAR CART
+import { useAuth } from '../../context/AuthContext'; // ✅ Import AuthContext
+import { useCart } from '../../context/CartContext';
 import { 
   Coffee, LayoutDashboard, Ticket, LogOut, Home, ChevronRight, 
   Settings, Save, Lock, X, ShoppingBag, Calendar, Menu
@@ -87,7 +88,6 @@ const OrderDetailModal = ({ order, onClose }) => {
     </div>
   );
 };
-
 
 // --- SUB-KOMPONEN: RIWAYAT PESANAN ---
 const OrderHistory = () => {
@@ -197,23 +197,24 @@ const EditProfile = ({ user }) => {
 // === MAIN USER DASHBOARD ===
 const UserDashboard = () => {
   const navigate = useNavigate();
-  const { clearCart } = useCart(); // 2. AMBIL FUNGSI CLEAR CART
+  const { logout, user } = useAuth(); // ✅ Gunakan dari AuthContext
+  const { clearCart } = useCart();
+  
   const [activeTab, setActiveTab] = useState('orders'); 
-  const [user, setUser] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (!userData) { navigate('/login'); } else { setUser(JSON.parse(userData)); }
-  }, [navigate]);
+    // Jika user tidak ada (belum login), redirect ke login
+    if (!user) {
+      navigate('/login');
+    }
+  }, [user, navigate]);
 
-  // --- 3. LOGOUT DENGAN MEMBERSIHKAN KERANJANG ---
+  // --- LOGOUT DENGAN MEMBERSIHKAN KERANJANG ---
   const handleLogout = () => { 
     if(window.confirm('Apakah Anda yakin ingin keluar?')) {
-      localStorage.removeItem('token'); 
-      localStorage.removeItem('user'); 
+      logout(); // ✅ Gunakan logout dari AuthContext
       clearCart(); // Kosongkan Keranjang
-      navigate('/'); // Redirect ke Home
     }
   };
 
@@ -238,7 +239,10 @@ const UserDashboard = () => {
         <div className="p-8 flex items-center justify-between md:justify-start gap-3 mb-2">
            <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-arjes-gold rounded-xl flex items-center justify-center text-arjes-bg font-bold shadow-lg"><Coffee size={24} /></div>
-              <h1 className="text-xl font-serif font-bold text-arjes-gold">Arjes User</h1>
+              <div>
+                <h1 className="text-xl font-serif font-bold text-arjes-gold">Arjes User</h1>
+                <p className="text-xs text-gray-400">{user.email}</p>
+              </div>
            </div>
            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white"><X size={24} /></button>
         </div>

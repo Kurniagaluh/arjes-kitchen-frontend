@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useCart } from '../../context/CartContext'; 
 import { Trash2, CreditCard, Upload, ArrowLeft, Ticket, CheckCircle, Store, Banknote, Utensils, ShoppingBag, AlertTriangle, Lock, PartyPopper, Plus, Minus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { createOrder, createPickupOrder } from '../../api/orderApi'; // Buat API service
 
 const Checkout = () => {
   const navigate = useNavigate();
@@ -68,41 +69,57 @@ const Checkout = () => {
   }, [hasBooking]);
 
   // --- HANDLE BAYAR (DENGAN PENYIMPANAN DATA) ---
-  const handlePayment = () => {
-    if (cart.length === 0) return;
+const handlePayment = async () => {
+  if (cart.length === 0) return;
 
-    // Validasi Upload Bukti
-    if (paymentMethod === 'qris' && totalBayar > 0 && !buktiTransfer) {
-      alert("⚠️ Mohon upload bukti pembayaran dulu ya!");
-      return;
+  // Validasi
+  if (paymentMethod === 'qris' && totalBayar > 0 && !buktiTransfer) {
+    alert("⚠️ Mohon upload bukti pembayaran dulu ya!");
+    return;
+  }
+
+  try {
+    // Siapkan data untuk backend
+    const orderData = {
+      jenis_order: diningOption, // 'dine_in' atau 'pickup'
+      items: foodItems.map(item => ({
+        menu_id: item.id,
+        qty: item.qty
+      })),
+      voucher_code: activeVoucher?.code || null,
+      // Untuk pickup tambahkan data ini
+      ...(diningOption === 'pickup' && {
+        nama_penerima: "Customer Name", // Ambil dari form
+        catatan: "Catatan pickup"
+      }),
+      // Untuk dine-in dengan booking
+      ...(hasBooking && diningOption === 'dine_in' && {
+        booking_id: bookingItem.id
+      })
+    };
+
+    // Pilih API berdasarkan jenis order
+    let response;
+    if (diningOption === 'pickup') {
+      response = await createPickupOrder(orderData);
+    } else {
+      response = await createOrder(orderData);
     }
 
-    const methodText = paymentMethod === 'qris' ? 'Pembayaran QRIS' : 'Pembayaran Tunai';
-    const confirmMsg = `Total Rp ${totalBayar.toLocaleString()} akan diproses.\nMetode: ${methodText}\n\nLanjutkan?`;
-
-    if (window.confirm(confirmMsg)) {
-      
-      // 1. BUAT DATA ORDER BARU (Untuk Riwayat Dashboard)
-      const newOrder = {
-        id: `ORD-${Date.now()}`, // ID Unik
-        date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        items: cart, // Simpan item yang dibeli
-        total: totalBayar,
-        status: paymentMethod === 'qris' ? 'Menunggu Verifikasi' : 'Menunggu Pembayaran',
-        method: paymentMethod,
-        type: diningOption
-      };
-
-      // 2. SIMPAN KE LOCALSTORAGE (Gabungkan dengan data lama)
-      const existingOrders = JSON.parse(localStorage.getItem('arjes_orders') || '[]');
-      localStorage.setItem('arjes_orders', JSON.stringify([newOrder, ...existingOrders]));
-
-      alert("🎉 Pesanan Berhasil! Silakan cek status di Dashboard.");
-      clearCart(); 
-      navigate('/user/dashboard'); 
+    // Jika berhasil, simpan bukti pembayaran jika ada
+    if (buktiTransfer) {
+      await uploadPaymentProof(response.data.order.id, buktiTransfer);
     }
-  };
+
+    alert("🎉 Pesanan Berhasil! ID Order: " + response.data.order.id);
+    clearCart();
+    navigate('/user/dashboard');
+
+  } catch (error) {
+    console.error("Gagal membuat order:", error);
+    alert("❌ Gagal membuat pesanan. " + (error.response?.data?.message || error.message));
+  }
+};
 
   if (cart.length === 0) {
     return (

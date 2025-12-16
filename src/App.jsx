@@ -1,5 +1,6 @@
 import React from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 // --- IMPORT COMPONENTS ---
 import Navbar from './components/Navbar';
@@ -13,16 +14,16 @@ import Footer from './components/Footer';
 // --- IMPORT PAGES ---
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Booking from './pages/Booking';
+import Booking from './pages/BookingPage';
+import Menu from './pages/user/Menu';
+import ManageMenu from './pages/admin/ManageMenu';
+import Checkout from './pages/user/Checkout';
+import UserDashboard from './pages/user/UserDashboard';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminTables from './pages/admin/AdminTables'; 
 
-// Update: Arahkan ke folder spesifik (User vs Admin)
-import Menu from './pages/user/Menu';           // Halaman Menu Pembeli (Read Only)
-import ManageMenu from './pages/admin/ManageMenu'; // Halaman Menu Admin (CRUD)
-import Checkout from './pages/user/Checkout'; 
-
-// Import Dashboard
-import UserDashboard from './pages/user/UserDashboard'; 
-import AdminDashboard from './pages/admin/AdminDashboard'; 
+// Import ProtectedRoute
+import ProtectedRoute from './components/ProtectedRoute';
 
 // --- 1. KOMPONEN LANDING PAGE ---
 const LandingPage = () => {
@@ -38,21 +39,17 @@ const LandingPage = () => {
   );
 };
 
-// --- FUNGSI UTAMA APLIKASI ---
-function App() {
+// --- 2. KOMPONEN UTAMA DENGAN AUTH ---
+function AppContent() {
   const location = useLocation();
+  const { isAuthenticated, isAdmin } = useAuth();
 
   // --- LOGIKA MENYEMBUNYIKAN NAVBAR & FOOTER ---
-  // Sembunyikan Navbar/Footer di Dashboard (Admin/User) dan Halaman Auth
-  // Tambahkan juga '/admin/menu' agar saat admin input data, tampilan full tanpa navbar publik
   const isDashboard = location.pathname.startsWith('/admin') || location.pathname.startsWith('/user');
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
   const showNavbar = !isDashboard && !isAuthPage;
   const showFooter = !isDashboard && !isAuthPage;
-
-  // --- LOGIKA MENYEMBUNYIKAN WA ---
-  // Khusus Admin, tombol WA dihilangkan agar tidak mengganggu
   const isAdminRoute = location.pathname.startsWith('/admin');
 
   return (
@@ -66,26 +63,55 @@ function App() {
         <Routes>
           {/* A. Halaman Publik */}
           <Route path="/" element={<LandingPage />} />
-          
-          {/* Halaman Menu untuk Pembeli */}
-          <Route path="/menu" element={<Menu />} /> 
+          <Route path="/menu" element={<Menu />} />
           
           {/* B. Halaman Transaksi */}
           <Route path="/cart" element={<Checkout />} /> 
           <Route path="/checkout" element={<Checkout />} />
           
           {/* C. Auth & Reservasi */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={
+            isAuthenticated ? <Navigate to="/" replace /> : <Login />
+          } />
+          <Route path="/register" element={
+            isAuthenticated ? <Navigate to="/" replace /> : <Register />
+          } />
           <Route path="/booking" element={<Booking />} />
 
-          {/* D. Dashboard Area & Admin (Protected) */}
-          <Route path="/profile" element={<UserDashboard />} /> 
-          <Route path="/user/dashboard" element={<UserDashboard />} />
+          {/* D. Protected Routes - User */}
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <UserDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/user/dashboard" element={
+            <ProtectedRoute>
+              <UserDashboard />
+            </ProtectedRoute>
+          } />
           
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          {/* Route Admin Input Menu (BARU) */}
-          <Route path="/admin/menu" element={<ManageMenu />} />
+          {/* E. Protected Routes - Admin Only */}
+          <Route path="/admin/dashboard" element={
+            <ProtectedRoute requireAdmin>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/menu" element={
+            <ProtectedRoute requireAdmin>
+              <ManageMenu />
+            </ProtectedRoute>
+          } />
+          
+          {/* ✅ TAMBAHKAN ROUTE INI UNTUK ADMIN TABLES */}
+          <Route path="/admin/tables" element={
+            <ProtectedRoute requireAdmin>
+              <AdminTables />
+            </ProtectedRoute>
+          } />
+
+          {/* Catch all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
 
@@ -93,10 +119,17 @@ function App() {
       {showFooter && <Footer />}
 
       {/* 4. FLOATING WIDGETS (WhatsApp) */}
-      {/* Hanya muncul jika BUKAN halaman Admin */}
       {!isAdminRoute && <WhatsAppFloat />}
-
     </div>
+  );
+}
+
+// --- 3. WRAP APP DENGAN AUTH PROVIDER ---
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
