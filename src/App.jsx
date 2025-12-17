@@ -14,13 +14,14 @@ import Footer from './components/Footer';
 // --- IMPORT PAGES ---
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Booking from './pages/BookingPage';
 import Menu from './pages/user/Menu';
 import ManageMenu from './pages/admin/ManageMenu';
 import Checkout from './pages/user/Checkout';
 import UserDashboard from './pages/user/UserDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminTables from './pages/admin/AdminTables'; 
+import ManageBooking from './pages/admin/ManageBooking';
+import BookingPage from './pages/user/BookingPage';
 
 // Import ProtectedRoute
 import ProtectedRoute from './components/ProtectedRoute';
@@ -76,7 +77,11 @@ function AppContent() {
           <Route path="/register" element={
             isAuthenticated ? <Navigate to="/" replace /> : <Register />
           } />
-          <Route path="/booking" element={<Booking />} />
+          <Route path="/booking" element={
+  <ProtectedRoute>
+    <BookingPage />
+  </ProtectedRoute>
+} />
 
           {/* D. Protected Routes - User */}
           <Route path="/profile" element={
@@ -90,6 +95,18 @@ function AppContent() {
             </ProtectedRoute>
           } />
           
+          <Route path="/checkout" element={
+            <ProtectedRoute>
+              <Checkout />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/cart" element={
+            <ProtectedRoute>
+              <Checkout />
+            </ProtectedRoute>
+          } />
+
           {/* E. Protected Routes - Admin Only */}
           <Route path="/admin/dashboard" element={
             <ProtectedRoute requireAdmin>
@@ -110,11 +127,16 @@ function AppContent() {
             </ProtectedRoute>
           } />
 
+          <Route path="/admin/booking" element={
+           <ProtectedRoute requireAdmin>
+             <ManageBooking />
+           </ProtectedRoute>
+           } />
+
           {/* Catch all route */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace  />} />
         </Routes>
       </div>
-
       {/* 3. GLOBAL FOOTER */}
       {showFooter && <Footer />}
 
