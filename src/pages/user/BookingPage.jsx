@@ -1,15 +1,17 @@
+// src/pages/user/BookingPage.jsx
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import bookingAPI from '../api/booking';
-import { mejaAPI } from '../api/meja';
+import { useAuth } from '../../context/AuthContext';
+import bookingAPI from '../../api/booking';
+import { mejaAPI } from '../../api/meja';
 import {
   Calendar, Clock, Users, MapPin, CheckCircle, XCircle, AlertCircle,
   Plus, Eye, Coffee, X, ChevronRight, Home, Menu as MenuIcon, 
   Table2, Loader2, LogOut,
-  Search, RefreshCw, ChevronLeft
+  Search, RefreshCw, ChevronLeft, Filter, ShoppingCart, Star
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
-// ... (semua helper function dan StatusBadge tetap sama)
+// Helper functions (sama seperti sebelumnya)
 const formatDate = (dateString) => {
   if (!dateString) return '-';
   const date = new Date(dateString);
@@ -70,7 +72,7 @@ const formatRp = (value) => {
   }).format(value);
 };
 
-// Status Badge Component (tetap sama)
+// Status Badge Component
 const StatusBadge = ({ status }) => {
   const statusConfig = {
     pending: { 
@@ -101,30 +103,21 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-// Main Booking Component
+// Main Booking Component untuk Customer
 const BookingPage = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('my-bookings');
   const [myBookings, setMyBookings] = useState([]);
-  
-  // --- GANTI NAMA STATE ---
-  const [getAvailable, setAllTables] = useState([]); // Sebelumnya availableTables
-  
+  const [availableTables, setAvailableTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('terbaru');
   
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(9);
-
   // Form state
   const [formData, setFormData] = useState({
     meja_id: '',
@@ -133,7 +126,7 @@ const BookingPage = () => {
     catatan: ''
   });
 
-  // Fetch user's bookings (tetap sama)
+  // Fetch user's bookings
   const fetchMyBookings = async () => {
     setLoading(true);
     try {
@@ -146,19 +139,18 @@ const BookingPage = () => {
     }
   };
 
-  // --- GANTI FUNGSI FETCH MEJA ---
-  // Fetch all tables that are marked as 'tersedia'
-  const fetchAllTables = async () => {
+  // Fetch available tables
+  const fetchAvailableTables = async () => {
     try {
       const response = await mejaAPI.getAvailable();
-      setAllTables(response.data || []);
+      setAvailableTables(response.data || []);
     } catch (error) {
       console.error('Error fetching tables:', error);
-      setAllTables([]);
+      setAvailableTables([]);
     }
   };
 
-  // Handle form submission (tetap sama, backend yang akan validasi)
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -175,7 +167,7 @@ const BookingPage = () => {
     }
 
     // Cari meja yang dipilih untuk mendapatkan kapasitasnya
-    const selectedTable = getAvailable.find(table => table.id === formData.meja_id);
+    const selectedTable = availableTables.find(table => table.id === formData.meja_id);
     if (!selectedTable) {
       alert('Meja tidak valid');
       return;
@@ -198,12 +190,11 @@ const BookingPage = () => {
       });
       fetchMyBookings();
     } catch (error) {
-      // Backend akan mengembalikan error 400 jika meja tidak tersedia
       alert(error.response?.data?.message || 'Gagal membuat booking. Mungkin meja sudah dipesan pada waktu tersebut.');
     }
   };
 
-  // Handle cancel booking (tetap sama)
+  // Handle cancel booking
   const handleCancelBooking = async (id) => {
     if (!window.confirm('Apakah Anda yakin ingin membatalkan booking ini?')) return;
 
@@ -216,7 +207,7 @@ const BookingPage = () => {
     }
   };
 
-  // Set waktu_selesai automatically (tetap sama)
+  // Set waktu_selesai automatically
   const handleTanggalChange = (e) => {
     const tanggal = e.target.value;
     if (!tanggal) {
@@ -233,45 +224,43 @@ const BookingPage = () => {
     }));
   };
 
-  // Get current datetime for min attribute (tetap sama)
+  // Get current datetime for min attribute
   const getCurrentDateTime = () => {
     const now = new Date();
     return formatForDateTimeLocal(now);
   };
 
-  // Get tomorrow's date for max attribute (tetap sama)
+  // Get tomorrow's date for max attribute
   const getTomorrowDateTime = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 30);
     return formatForDateTimeLocal(tomorrow);
   };
 
-  // Reset all filters (tetap sama)
+  // Reset all filters
   const resetFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
     setSortBy('terbaru');
-    setCurrentPage(1);
   };
 
-  // --- PERBAIKI EFFECT ---
   // Effects
   useEffect(() => {
     if (user) {
       fetchMyBookings();
-      fetchAllTables(); // Ambil data meja saat komponen dimuat
+      fetchAvailableTables();
     }
-  }, [user]); // Hanya depend pada user
+  }, [user]);
 
-  // --- GANTI LOGIKA VALIDASI FORM ---
+  // Check if form is valid
   const isFormValid = () => {
     return formData.tanggal && 
            formData.waktu_selesai && 
            formData.meja_id && 
-           getAvailable.length > 0; // Cek apakah ada meja sama sekali
+           availableTables.length > 0;
   };
 
-  // Filter and sort functions (tetap sama)
+  // Filter and sort functions
   const filteredBookings = myBookings.filter(booking => {
     const matchesSearch = booking.meja?.nama?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          booking.kode_booking?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -282,7 +271,7 @@ const BookingPage = () => {
     return matchesSearch && matchesStatus;
   });
 
-  // Sort function (tetap sama)
+  // Sort function
   const sortedBookings = [...filteredBookings].sort((a, b) => {
     switch(sortBy) {
       case 'terbaru':
@@ -296,16 +285,7 @@ const BookingPage = () => {
     }
   });
 
-  // Pagination calculation (tetap sama)
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = sortedBookings.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(sortedBookings.length / itemsPerPage);
-
-  // Change page (tetap sama)
-  const paginate = (pageNumber) => setCurrentPage(pageNumber);
-
-  // Calculate stats (tetap sama)
+  // Calculate stats
   const stats = {
     total: myBookings.length,
     pending: myBookings.filter(b => b.status === 'pending').length,
@@ -313,143 +293,69 @@ const BookingPage = () => {
     cancelled: myBookings.filter(b => b.status === 'cancelled').length,
   };
 
+  // === LOADING STATE ===
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#0F1F18] to-[#1a2d25] flex flex-col items-center justify-center pt-24 px-4">
+        <div className="text-center max-w-md">
+          <div className="relative">
+            <Loader2 className="w-16 h-16 animate-spin text-[#D4AF37] mx-auto mb-6" />
+            <div className="absolute inset-0 bg-[#D4AF37]/10 rounded-full blur-xl"></div>
+          </div>
+          <h2 className="text-2xl font-serif font-bold text-[#D4AF37] mb-3">
+            Memuat Booking...
+          </h2>
+          <p className="text-gray-300">
+            Sedang mengambil data booking Anda
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen bg-arjes-bg text-arjes-text overflow-hidden font-sans">
-      {/* --- OVERLAY MOBILE, SIDEBAR, MAIN CONTENT, HEADER, STATS, FILTERS --- */}
-      {/* ... (Bagian-bagian ini tetap sama, tidak perlu diubah) ... */}
-      {/* --- OVERLAY MOBILE --- */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        ></div>
-      )}
-
-      {/* --- SIDEBAR --- */}
-      <aside className={`
-        fixed top-0 left-0 z-50 h-full w-64 bg-[#0F1F18] border-r border-white/5 flex flex-col shadow-2xl transition-transform duration-300
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:translate-x-0 md:static md:flex
-      `}>
-        {/* ... Isi sidebar tetap sama ... */}
-        <div className="p-8 flex items-center justify-between md:justify-start gap-3 mb-2">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-arjes-gold rounded-xl flex items-center justify-center text-arjes-bg font-bold shadow-lg">
-              <Coffee size={24} />
-            </div>
-            <div>
-              <h1 className="text-xl font-serif font-bold text-white tracking-wide">Arjes Booking</h1>
-              <p className="text-xs text-gray-400">{user?.email || 'Guest'}</p>
-            </div>
-          </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white">
-            <X size={24} />
-          </button>
+    <div className="min-h-screen bg-gradient-to-b from-[#0F1F18] to-[#1a2d25] text-white pt-24 pb-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header Booking */}
+        <div className="text-center mb-12">
+          <motion.h1 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-4xl md:text-5xl font-serif font-bold text-[#D4AF37] mb-4"
+          >
+            Booking Meja Arjes Kitchen
+          </motion.h1>
+          <p className="text-gray-300 max-w-2xl mx-auto">
+            Reservasi meja untuk pengalaman terbaik di Arjes Kitchen
+          </p>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
-          <button
-            onClick={() => {
-              setActiveTab('my-bookings');
-              setIsSidebarOpen(false);
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
-              activeTab === 'my-bookings'
-                ? 'bg-arjes-gold text-arjes-bg font-bold shadow-lg shadow-arjes-gold/20'
-                : 'text-gray-400 hover:bg-white/5 hover:text-white'
-            }`}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white/5 border border-white/5 rounded-2xl p-6 hover:border-[#D4AF37]/50 transition-all"
           >
-            <Calendar size={18} />
-            Booking Saya
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('new-booking');
-              setShowBookingModal(true);
-              setIsSidebarOpen(false);
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all ${
-              activeTab === 'new-booking'
-                ? 'bg-arjes-gold text-arjes-bg font-bold shadow-lg shadow-arjes-gold/20'
-                : 'text-gray-400 hover:bg-white/5 hover:text-white'
-            }`}
-          >
-            <Plus size={18} />
-            Booking Baru
-          </button>
-        </nav>
-
-        <div className="p-6 border-t border-white/5 space-y-2 mt-auto">
-          <a 
-            href="/" 
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:text-white transition-all hover:bg-white/5"
-          >
-            <Home size={18} />
-            Kembali ke Beranda
-          </a>
-          <button 
-            onClick={logout} 
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all font-medium"
-          >
-            <LogOut size={18} /> Keluar
-          </button>
-        </div>
-      </aside>
-
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 overflow-y-auto h-full p-4 md:p-8 relative z-10">
-        {/* ... Isi main content tetap sama ... */}
-        {/* HEADER */}
-        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setIsSidebarOpen(true)} 
-              className="md:hidden p-2 bg-[#0F1F18] border border-white/10 rounded-lg text-white shadow-lg"
-            >
-              <MenuIcon size={24} />
-            </button>
-            
-            <div>
-              <h1 className="text-2xl md:text-3xl font-serif font-bold text-white">Booking Meja</h1>
-              <p className="text-gray-400 text-sm mt-1">Reservasi meja untuk pengalaman terbaik</p>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={() => setShowBookingModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-arjes-gold text-arjes-bg font-bold rounded-xl hover:bg-white transition-colors"
-            >
-              <Plus size={18} />
-              Booking Baru
-            </button>
-            
-            <button 
-              onClick={fetchMyBookings}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 text-white border border-white/10 rounded-xl hover:bg-white/10 transition-colors"
-              disabled={loading}
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-              {loading ? 'Memuat...' : 'Refresh'}
-            </button>
-          </div>
-        </div>
-
-        {/* STATS CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-gradient-to-br from-white/10 to-transparent border border-white/10 rounded-2xl p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Total Booking</p>
                 <h3 className="text-3xl font-bold text-white mt-1">{stats.total}</h3>
               </div>
-              <div className="p-3 bg-white/5 rounded-xl">
-                <Calendar className="text-arjes-gold" size={24} />
+              <div className="p-3 bg-[#D4AF37]/10 rounded-xl">
+                <Calendar className="text-[#D4AF37]" size={24} />
               </div>
             </div>
-          </div>
+          </motion.div>
           
-          <div className="bg-gradient-to-br from-yellow-500/10 to-transparent border border-yellow-500/20 rounded-2xl p-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-6 hover:border-[#D4AF37]/50 transition-all"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Menunggu</p>
@@ -459,9 +365,14 @@ const BookingPage = () => {
                 <Clock className="text-yellow-400" size={24} />
               </div>
             </div>
-          </div>
+          </motion.div>
           
-          <div className="bg-gradient-to-br from-green-500/10 to-transparent border border-green-500/20 rounded-2xl p-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-green-500/10 border border-green-500/20 rounded-2xl p-6 hover:border-[#D4AF37]/50 transition-all"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Dikonfirmasi</p>
@@ -471,9 +382,14 @@ const BookingPage = () => {
                 <CheckCircle className="text-green-400" size={24} />
               </div>
             </div>
-          </div>
+          </motion.div>
           
-          <div className="bg-gradient-to-br from-red-500/10 to-transparent border border-red-500/20 rounded-2xl p-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 hover:border-[#D4AF37]/50 transition-all"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Dibatalkan</p>
@@ -483,233 +399,265 @@ const BookingPage = () => {
                 <XCircle className="text-red-400" size={24} />
               </div>
             </div>
+          </motion.div>
+        </div>
+
+        {/* Filter & Search */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10">
+          <div className="flex gap-2 overflow-x-auto pb-2 w-full md:w-auto no-scrollbar">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all border flex-shrink-0 ${
+                statusFilter === 'all'
+                  ? 'bg-[#D4AF37] text-[#0F1F18] border-[#D4AF37]'
+                  : 'bg-transparent text-gray-400 border-white/10 hover:border-[#D4AF37] hover:text-[#D4AF37]'
+              }`}
+            >
+              Semua ({stats.total})
+            </button>
+            <button
+              onClick={() => setStatusFilter('pending')}
+              className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all border flex-shrink-0 ${
+                statusFilter === 'pending'
+                  ? 'bg-yellow-500 text-[#0F1F18] border-yellow-500'
+                  : 'bg-transparent text-gray-400 border-white/10 hover:border-yellow-500 hover:text-yellow-500'
+              }`}
+            >
+              Menunggu ({stats.pending})
+            </button>
+            <button
+              onClick={() => setStatusFilter('confirmed')}
+              className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all border flex-shrink-0 ${
+                statusFilter === 'confirmed'
+                  ? 'bg-green-500 text-[#0F1F18] border-green-500'
+                  : 'bg-transparent text-gray-400 border-white/10 hover:border-green-500 hover:text-green-500'
+              }`}
+            >
+              Dikonfirmasi ({stats.confirmed})
+            </button>
+            <button
+              onClick={() => setStatusFilter('cancelled')}
+              className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all border flex-shrink-0 ${
+                statusFilter === 'cancelled'
+                  ? 'bg-red-500 text-[#0F1F18] border-red-500'
+                  : 'bg-transparent text-gray-400 border-white/10 hover:border-red-500 hover:text-red-500'
+              }`}
+            >
+              Dibatalkan ({stats.cancelled})
+            </button>
+          </div>
+
+          <div className="flex gap-4 w-full md:w-auto">
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input 
+                type="text" 
+                placeholder="Cari booking..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-white/5 border border-white/10 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#D4AF37]"
+            >
+              <option value="terbaru">Terbaru</option>
+              <option value="terlama">Terlama</option>
+              <option value="tanggal">Berdasarkan Tanggal</option>
+            </select>
+
+            <button
+              onClick={resetFilters}
+              className="px-4 py-3 bg-white/5 text-white border border-white/10 rounded-xl hover:bg-white/10 transition-colors text-sm font-medium flex items-center gap-2 whitespace-nowrap"
+            >
+              <RefreshCw size={16} />
+              Reset
+            </button>
           </div>
         </div>
 
-        {/* FILTERS */}
-        <div className="bg-[#0F1F18] border border-white/10 rounded-2xl p-6 mb-8">
-          <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-            <div className="flex items-center gap-4 w-full lg:w-auto">
-              <div className="relative flex-1 lg:flex-none">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Cari booking (meja, kode, catatan)..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full lg:w-64 bg-black/30 border border-white/10 pl-10 pr-4 py-2.5 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:border-arjes-gold"
-                />
-              </div>
-              
-              <button
-                onClick={resetFilters}
-                className="px-4 py-2.5 bg-white/5 text-white border border-white/10 rounded-xl hover:bg-white/10 transition-colors text-sm font-medium flex items-center gap-2"
-              >
-                <RefreshCw size={16} />
-                Reset Filter
-              </button>
-            </div>
-            
-            <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-black/30 border border-white/10 text-white px-4 py-2.5 rounded-xl focus:outline-none focus:border-arjes-gold"
-              >
-                <option value="all">Semua Status</option>
-                <option value="pending">Menunggu</option>
-                <option value="confirmed">Dikonfirmasi</option>
-                <option value="cancelled">Dibatalkan</option>
-              </select>
-              
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-black/30 border border-white/10 text-white px-4 py-2.5 rounded-xl focus:outline-none focus:border-arjes-gold"
-              >
-                <option value="terbaru">Terbaru</option>
-                <option value="terlama">Terlama</option>
-                <option value="tanggal">Berdasarkan Tanggal</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* BOOKINGS CONTENT */}
-        <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden">
-          <div className="p-6 border-b border-white/10">
-            <h3 className="font-bold text-white">Daftar Booking</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Menampilkan {currentItems.length} booking dari {filteredBookings.length} hasil filter (total: {myBookings.length} booking)
+        {/* Results Info */}
+        {(statusFilter !== 'all' || searchTerm) && (
+          <div className="mb-6 text-center">
+            <p className="text-gray-400 text-sm">
+              Menampilkan {sortedBookings.length} dari {myBookings.length} booking
+              {statusFilter !== 'all' && ` • Status: ${statusFilter}`}
+              {searchTerm && ` • Pencarian: "${searchTerm}"`}
             </p>
           </div>
-          
-          {loading ? (
-            <div className="p-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-arjes-gold"></div>
-              <p className="text-gray-400 mt-4">Memuat data booking...</p>
-            </div>
-          ) : sortedBookings.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="inline-block p-4 bg-white/5 rounded-full mb-4">
-                <Calendar className="text-gray-600" size={40} />
-              </div>
-              <h4 className="text-white font-bold text-lg mb-2">Belum ada booking</h4>
-              <p className="text-gray-400 mb-6">Mulai dengan membuat booking pertama Anda</p>
-              <button 
-                onClick={() => setShowBookingModal(true)}
-                className="px-6 py-3 bg-arjes-gold text-arjes-bg font-bold rounded-xl hover:bg-white transition-colors"
+        )}
+
+        {/* Action Button */}
+        <div className="mb-8 text-center">
+          <motion.button
+            onClick={() => setShowBookingModal(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="bg-[#D4AF37] text-[#0F1F18] px-8 py-4 rounded-xl font-bold text-lg hover:bg-white transition-all flex items-center gap-3 mx-auto"
+          >
+            <Plus size={24} />
+            Buat Booking Baru
+          </motion.button>
+        </div>
+
+        {/* Grid Booking */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {sortedBookings.length > 0 ? (
+            sortedBookings.map((booking) => (
+              <motion.div
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                key={booking.id}
+                className="bg-white/5 border border-white/5 rounded-3xl overflow-hidden hover:border-[#D4AF37]/50 transition-all group"
               >
-                <Plus size={18} className="inline mr-2" />
-                Buat Booking Pertama
-              </button>
-            </div>
-          ) : (
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {currentItems.map(booking => (
-                  <div key={booking.id} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-arjes-gold/30 transition-all group">
-                    {/* Header with Status */}
-                    <div className="p-5 border-b border-white/10">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="text-xs text-gray-400 mb-1">Kode Booking</div>
-                          <div className="text-white font-bold font-mono">{booking.kode_booking || 'BKJ-' + booking.id}</div>
-                        </div>
-                        <StatusBadge status={booking.status} />
-                      </div>
-                      
-                      <div className="text-white font-medium text-lg mb-2">
-                        {formatDate(booking.tanggal)}
-                      </div>
-                      <div className="text-gray-400 text-sm">
-                        {formatTime(booking.tanggal)} - {formatTime(booking.waktu_selesai)}
-                      </div>
+                {/* Header dengan Status Badge */}
+                <div className="p-6 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-white group-hover:text-[#D4AF37] transition-colors line-clamp-1">
+                        {booking.meja?.nama || 'Meja'}
+                      </h3>
+                      <p className="text-gray-400 text-sm mt-1">{booking.kode_booking || `BKJ-${booking.id}`}</p>
                     </div>
-                    
-                    {/* Booking Details */}
-                    <div className="p-5">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-arjes-gold/10 rounded-lg">
-                          <Table2 size={18} className="text-arjes-gold" />
-                        </div>
-                        <div>
-                          <div className="text-white font-medium">{booking.meja?.nama || 'Meja'}</div>
-                          <div className="text-gray-400 text-xs">
-                            Kapasitas: {booking.meja?.kapasitas} orang
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-500/10 rounded-lg">
-                          <Users size={18} className="text-blue-400" />
-                        </div>
-                        <div className="text-white font-medium">
-                          {booking.jumlah_orang} orang
-                        </div>
-                      </div>
-                      
-                      {booking.catatan && (
-                        <div className="mb-4">
-                          <div className="text-xs text-gray-400 mb-1">Catatan</div>
-                          <div className="text-gray-300 text-sm line-clamp-2">
-                            {booking.catatan}
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center justify-between pt-4 border-t border-white/10">
-                        <button
-                          onClick={() => {
-                            setSelectedBooking(booking);
-                            setShowDetailModal(true);
-                          }}
-                          className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
-                        >
-                          <Eye size={16} />
-                          Detail
-                        </button>
-                        
-                        <div className="flex items-center gap-2">
-                          {(booking.status === 'pending' || booking.status === 'confirmed') && (
-                            <button
-                              onClick={() => handleCancelBooking(booking.id)}
-                              className="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-xs font-medium flex items-center gap-2"
-                            >
-                              <XCircle size={14} />
-                              Batalkan
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                    <StatusBadge status={booking.status} />
+                  </div>
+                  
+                  {/* Date & Time */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Calendar size={18} className="text-[#D4AF37]" />
+                      <span className="text-white font-medium">{formatDate(booking.tanggal)}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Clock size={18} className="text-[#D4AF37]" />
+                      <span className="text-gray-300">
+                        {formatTime(booking.tanggal)} - {formatTime(booking.waktu_selesai)}
+                      </span>
                     </div>
                   </div>
-                ))}
-              </div>
-              
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-8 pt-6 border-t border-white/10">
-                  <button
-                    onClick={() => paginate(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded-lg bg-white/5 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-                  
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNumber;
-                    if (totalPages <= 5) {
-                      pageNumber = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNumber = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNumber = totalPages - 4 + i;
-                    } else {
-                      pageNumber = currentPage - 2 + i;
-                    }
-                    
-                    return (
-                      <button
-                        key={pageNumber}
-                        onClick={() => paginate(pageNumber)}
-                        className={`w-10 h-10 rounded-lg font-medium ${
-                          currentPage === pageNumber
-                            ? 'bg-arjes-gold text-arjes-bg'
-                            : 'bg-white/5 text-white hover:bg-white/10'
-                        } transition-colors`}
-                      >
-                        {pageNumber}
-                      </button>
-                    );
-                  })}
-                  
-                  <button
-                    onClick={() => paginate(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="p-2 rounded-lg bg-white/5 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
-                  >
-                    <ChevronRight size={20} />
-                  </button>
-                  
-                  <span className="text-gray-400 text-sm ml-4">
-                    Halaman {currentPage} dari {totalPages}
-                  </span>
                 </div>
-              )}
+
+                {/* Booking Details */}
+                <div className="p-6">
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-white/5 rounded-xl p-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <Users size={18} className="text-[#D4AF37]" />
+                        <span className="text-gray-400 text-sm">Jumlah Orang</span>
+                      </div>
+                      <p className="text-white font-bold text-xl">{booking.jumlah_orang} orang</p>
+                    </div>
+                    
+                    <div className="bg-white/5 rounded-xl p-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <Table2 size={18} className="text-[#D4AF37]" />
+                        <span className="text-gray-400 text-sm">Kapasitas</span>
+                      </div>
+                      <p className="text-white font-bold text-xl">{booking.meja?.kapasitas || '?'} orang</p>
+                    </div>
+                  </div>
+
+                  {/* Catatan */}
+                  {booking.catatan && (
+                    <div className="mb-6">
+                      <p className="text-gray-400 text-sm mb-2">Catatan:</p>
+                      <p className="text-gray-300 text-sm line-clamp-2 bg-white/5 p-3 rounded-xl">
+                        {booking.catatan}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setSelectedBooking(booking);
+                        setShowDetailModal(true);
+                      }}
+                      className="flex-1 py-3 bg-white/10 text-white rounded-xl font-bold hover:bg-white/20 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Eye size={18} />
+                      Detail
+                    </button>
+                    
+                    {(booking.status === 'pending' || booking.status === 'confirmed') && (
+                      <button
+                        onClick={() => handleCancelBooking(booking.id)}
+                        className="flex-1 py-3 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-bold hover:bg-red-500/30 transition-all flex items-center justify-center gap-2"
+                      >
+                        <XCircle size={18} />
+                        Batalkan
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            <div className="col-span-full text-center py-20">
+              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Calendar size={32} className="text-gray-500" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Belum ada booking</h3>
+              <p className="text-gray-400 mb-4">
+                {statusFilter !== 'all' || searchTerm 
+                  ? 'Tidak ada booking yang sesuai dengan filter Anda.' 
+                  : 'Mulai dengan membuat booking pertama Anda.'}
+              </p>
+              <div className="space-x-4">
+                {statusFilter !== 'all' || searchTerm ? (
+                  <>
+                    <button 
+                      onClick={() => setSearchTerm('')}
+                      className="bg-white/10 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-all"
+                    >
+                      Hapus Pencarian
+                    </button>
+                    <button 
+                      onClick={() => setStatusFilter('all')}
+                      className="bg-[#D4AF37] text-[#0F1F18] px-4 py-2 rounded-xl font-bold hover:bg-white transition-all"
+                    >
+                      Lihat Semua Booking
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={() => setShowBookingModal(true)}
+                    className="bg-[#D4AF37] text-[#0F1F18] px-6 py-3 rounded-xl font-bold hover:bg-white transition-all"
+                  >
+                    <Plus size={18} className="inline mr-2" />
+                    Buat Booking Pertama
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* FOOTER INFO */}
-        <div className="mt-8 text-center text-sm text-gray-500">
-          <p>Total booking: {myBookings.length} • Menunggu: {stats.pending} • Dikonfirmasi: {stats.confirmed} • Dibatalkan: {stats.cancelled}</p>
-        </div>
-      </main>
+        {/* Footer Info */}
+        {sortedBookings.length > 0 && (
+          <div className="mt-12 text-center">
+            <p className="text-gray-400 text-sm">
+              Menemukan {sortedBookings.length} booking yang cocok
+            </p>
+          </div>
+        )}
 
-      {/* --- MODAL BOOKING BARU --- */}
+      </div>
+
+      {/* MODAL BOOKING BARU */}
       {showBookingModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-[#0F1F18] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -745,7 +693,7 @@ const BookingPage = () => {
                   onChange={handleTanggalChange}
                   min={getCurrentDateTime()}
                   max={getTomorrowDateTime()}
-                  className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold"
+                  className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#D4AF37]"
                   required
                 />
               </div>
@@ -762,7 +710,7 @@ const BookingPage = () => {
                   value={formData.waktu_selesai}
                   onChange={(e) => setFormData(prev => ({ ...prev, waktu_selesai: e.target.value }))}
                   min={formData.tanggal || getCurrentDateTime()}
-                  className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold"
+                  className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#D4AF37]"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-2">
@@ -778,7 +726,7 @@ const BookingPage = () => {
                   </div>
                 </label>
                 
-                {getAvailable.length === 0 ? ( // Ganti availableTables dengan getAvailable
+                {availableTables.length === 0 ? (
                   <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
                     <div className="flex items-center gap-3 text-red-400">
                       <XCircle size={20} />
@@ -792,13 +740,13 @@ const BookingPage = () => {
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                    {getAvailable.map((table) => ( // Ganti availableTables dengan getAvailable
+                    {availableTables.map((table) => (
                       <div
                         key={table.id}
                         className={`p-4 border rounded-xl cursor-pointer transition-all ${
                           formData.meja_id === table.id
-                            ? 'border-arjes-gold bg-arjes-gold/10'
-                            : 'border-white/10 hover:border-arjes-gold/50 hover:bg-white/5'
+                            ? 'border-[#D4AF37] bg-[#D4AF37]/10'
+                            : 'border-white/10 hover:border-[#D4AF37]/50 hover:bg-white/5'
                         }`}
                         onClick={() => setFormData(prev => ({ ...prev, meja_id: table.id }))}
                       >
@@ -811,7 +759,7 @@ const BookingPage = () => {
                                 Kapasitas: {table.kapasitas} orang
                               </div>
                               {table.harga_per_jam > 0 && (
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="mt-1">
                                   <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded">
                                     {formatRp(table.harga_per_jam)}/jam
                                   </span>
@@ -820,7 +768,7 @@ const BookingPage = () => {
                             </div>
                           </div>
                           {formData.meja_id === table.id && (
-                            <div className="p-2 bg-arjes-gold rounded-lg">
+                            <div className="p-2 bg-[#D4AF37] rounded-lg">
                               <CheckCircle className="text-white" size={20} />
                             </div>
                           )}
@@ -838,7 +786,7 @@ const BookingPage = () => {
                   onChange={(e) => setFormData(prev => ({ ...prev, catatan: e.target.value }))}
                   placeholder="Contoh: Meja dekat jendela, ada anak kecil, ada kebutuhan khusus, dll."
                   rows="3"
-                  className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold resize-none"
+                  className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#D4AF37] resize-none"
                 />
               </div>
               
@@ -860,7 +808,7 @@ const BookingPage = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 bg-arjes-gold text-arjes-bg font-bold rounded-xl hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 bg-[#D4AF37] text-[#0F1F18] font-bold rounded-xl hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!isFormValid()}
                 >
                   Buat Booking
@@ -871,8 +819,7 @@ const BookingPage = () => {
         </div>
       )}
 
-      {/* --- MODAL DETAIL BOOKING --- */}
-      {/* ... (Modal detail tetap sama) ... */}
+      {/* MODAL DETAIL BOOKING */}
       {showDetailModal && selectedBooking && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-[#0F1F18] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl">
@@ -896,8 +843,8 @@ const BookingPage = () => {
               {/* Tanggal & Waktu */}
               <div>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-arjes-gold/10 rounded-lg">
-                    <Calendar size={18} className="text-yellow-300" />
+                  <div className="p-2 bg-[#D4AF37]/10 rounded-lg">
+                    <Calendar size={18} className="text-[#D4AF37]" />
                   </div>
                   <h4 className="text-sm font-medium text-gray-300">Tanggal & Waktu</h4>
                 </div>
@@ -923,7 +870,7 @@ const BookingPage = () => {
                   <div className="flex justify-between items-start mb-2">
                     <div className="font-medium text-white text-lg">{selectedBooking.meja?.nama || 'Meja'}</div>
                     {selectedBooking.meja?.harga_per_jam > 0 && (
-                      <div className="text-arjes-gold font-bold">
+                      <div className="text-[#D4AF37] font-bold">
                         {formatRp(selectedBooking.meja.harga_per_jam)}/jam
                       </div>
                     )}
@@ -958,7 +905,7 @@ const BookingPage = () => {
                   </div>
                   <div className="flex justify-between items-center py-2 border-b border-white/10">
                     <span className="text-gray-400">Kode Booking</span>
-                    <span className="font-medium font-mono text-arjes-gold">{selectedBooking.kode_booking}</span>
+                    <span className="font-medium font-mono text-[#D4AF37]">{selectedBooking.kode_booking}</span>
                   </div>
                   <div className="flex justify-between items-center py-2">
                     <span className="text-gray-400">Dibuat Pada</span>

@@ -4,11 +4,13 @@ import { useAuth } from '../../context/AuthContext';
 import VoucherAdminPage from './VoucherAdminPage';
 import { 
   LayoutDashboard, ShoppingBag, Utensils, Ticket, 
-  Coffee, CheckCircle, XCircle, 
+  Coffee, CheckCircle, XCircle, Users, Package,
   Eye, Store, Plus, Trash2, MapPin, 
   DollarSign, Calendar, LogOut, FileText, Upload, Filter, Menu, X, ArrowRight,
-  Table // ✅ Tambahkan icon Table
+  Table, RefreshCw, Loader2, AlertCircle, TrendingUp, BarChart, Activity,
+  ArrowUpRight, ArrowDownRight, CheckSquare, XSquare, Clock, ShoppingCart
 } from 'lucide-react';
+import apiClient from '../../api/axiosConfig';
 
 // --- HELPER FORMAT RUPIAH ---
 const formatRp = (value) => {
@@ -19,41 +21,269 @@ const formatRp = (value) => {
   }).format(value);
 };
 
+// --- HELPER FORMAT TANGGAL ---
+const formatDate = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch (err) {
+    return dateString;
+  }
+};
+
+const formatTime = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (err) {
+    return dateString;
+  }
+};
+
+// --- HELPER: GET STATUS COLOR ---
+const getStatusColor = (status) => {
+  switch(status?.toLowerCase()) {
+    case 'paid':
+    case 'dibayar':
+    case 'selesai':
+    case 'completed':
+    case 'ready':
+      return 'bg-green-500/20 text-green-400 border-green-500/30';
+    case 'pending':
+    case 'menunggu':
+    case 'waiting':
+      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    case 'processing':
+    case 'diproses':
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    case 'cancelled':
+    case 'dibatalkan':
+    case 'canceled':
+      return 'bg-red-500/20 text-red-400 border-red-500/30';
+    default:
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  }
+};
+
+// --- HELPER: GET STATUS ICON ---
+const getStatusIcon = (status) => {
+  switch(status?.toLowerCase()) {
+    case 'paid':
+    case 'dibayar':
+    case 'selesai':
+    case 'completed':
+    case 'ready':
+      return <CheckSquare size={14} className="text-green-400" />;
+    case 'pending':
+    case 'menunggu':
+    case 'waiting':
+      return <Clock size={14} className="text-yellow-400" />;
+    case 'processing':
+    case 'diproses':
+      return <Package size={14} className="text-blue-400" />;
+    case 'cancelled':
+    case 'dibatalkan':
+    case 'canceled':
+      return <XSquare size={14} className="text-red-400" />;
+    default:
+      return <Clock size={14} className="text-gray-400" />;
+  }
+};
+
 // --- KOMPONEN KARTU STATISTIK ---
-const RevenueCard = ({ title, value, subtext, color }) => (
-  <div className="bg-[#0F1F18] border border-white/10 p-6 md:p-8 rounded-3xl relative overflow-hidden group shadow-xl transition-all hover:border-arjes-gold/30">
-    <div className={`absolute -right-6 -top-6 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${color} transform rotate-12`}>
-        <DollarSign size={100} />
-    </div>
-    <div className="relative z-10">
-        <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
-            <Calendar size={14}/> {title}
-        </p>
-        <h3 className={`text-2xl md:text-3xl font-serif font-bold ${color === 'green' ? 'text-green-400' : 'text-white'} mb-2`}>{value}</h3>
-        <p className="text-gray-500 text-xs">{subtext}</p>
-    </div>
+const StatCard = ({ title, value, subtext, icon: Icon, color, trend, loading }) => (
+  <div className="bg-[#0F1F18] border border-white/10 p-6 md:p-8 rounded-3xl relative overflow-hidden group shadow-xl transition-all hover:border-arjes-gold/30 hover:scale-[1.02]">
+    {loading ? (
+      <div className="flex items-center justify-center h-24">
+        <Loader2 className="animate-spin text-arjes-gold" size={24} />
+      </div>
+    ) : (
+      <>
+        <div className={`absolute -right-6 -top-6 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${color} transform rotate-12`}>
+          <Icon size={100} />
+        </div>
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+              <Icon size={14}/> {title}
+            </p>
+            {trend && (
+              <span className={`text-xs font-bold flex items-center gap-1 ${
+                trend.value > 0 ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {trend.value > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                {Math.abs(trend.value)}%
+              </span>
+            )}
+          </div>
+          <h3 className={`text-2xl md:text-3xl font-serif font-bold ${color} mb-2`}>
+            {value}
+          </h3>
+          <p className="text-gray-500 text-xs">{subtext}</p>
+        </div>
+      </>
+    )}
   </div>
 );
 
-// --- MODAL BUKTI TRANSFER ---
-const ProofModal = ({ order, onClose }) => {
+// --- MODAL DETAIL PESANAN ---
+const OrderDetailModal = ({ order, onClose }) => {
   if (!order) return null;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
-      <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden w-full max-w-sm shadow-2xl scale-100">
-        <div className="p-4 border-b border-white/10 flex justify-between items-center">
-          <h3 className="font-bold text-white">Bukti Transfer</h3>
-          <button onClick={onClose}><XCircle className="text-gray-400 hover:text-red-500 transition-colors"/></button>
+      <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden w-full max-w-2xl shadow-2xl scale-100 max-h-[90vh] flex flex-col">
+        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-arjes-gold/10">
+          <div>
+            <h3 className="font-bold text-white text-xl">Detail Pesanan</h3>
+            <p className="text-xs text-gray-400 mt-1">
+              Order ID: {order.order_number || order.id} • {formatDate(order.created_at)}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={24} />
+          </button>
         </div>
-        <div className="p-6 md:p-8 bg-black/40 flex flex-col items-center justify-center min-h-[250px] md:min-h-[300px]">
-           <div className="w-full h-40 md:h-48 bg-white/5 rounded-xl flex items-center justify-center mb-4 border border-white/10">
-              <Eye size={40} className="text-gray-500" />
-           </div>
-           <p className="text-xs text-gray-500">Preview Bukti Transfer</p>
+        
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Info Customer */}
+          <div className="mb-6 p-4 bg-white/5 rounded-xl">
+            <h4 className="text-white font-bold mb-3 flex items-center gap-2">
+              <Users size={16} />
+              Informasi Customer
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-400">Nama Customer</p>
+                <p className="text-white">{order.user?.name || 'Guest'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Email</p>
+                <p className="text-white">{order.user?.email || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Metode Order</p>
+                <p className="text-white capitalize">{order.jenis_order}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Status</p>
+                <span className={`px-2 py-1 rounded text-xs ${getStatusColor(order.status)}`}>
+                  {order.status}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Items Pesanan */}
+          {order.order_items && order.order_items.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-white font-bold mb-3 flex items-center gap-2">
+                <ShoppingCart size={16} />
+                Items Pesanan
+              </h4>
+              <div className="space-y-2">
+                {order.order_items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-3 bg-white/5 rounded">
+                    <div>
+                      <p className="text-white">{item.menu?.nama || 'Item'}</p>
+                      <p className="text-xs text-gray-400">Qty: {item.qty} × {formatRp(item.harga)}</p>
+                    </div>
+                    <p className="text-white font-bold">
+                      {formatRp(item.qty * item.harga)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Ringkasan Pembayaran */}
+          <div className="p-4 bg-black/20 rounded-xl">
+            <h4 className="text-white font-bold mb-3">Ringkasan Pembayaran</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between text-gray-400">
+                <span>Subtotal</span>
+                <span className="text-white">{formatRp(order.total)}</span>
+              </div>
+              {order.discount_amount > 0 && (
+                <div className="flex justify-between text-gray-400">
+                  <span>Diskon Voucher</span>
+                  <span className="text-green-400">-{formatRp(order.discount_amount)}</span>
+                </div>
+              )}
+              {order.voucher && (
+                <div className="flex justify-between text-gray-400">
+                  <span>Kode Voucher</span>
+                  <span className="text-yellow-400">{order.voucher.kode}</span>
+                </div>
+              )}
+              <div className="border-t border-white/10 pt-3 mt-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-white">Total Bayar</span>
+                  <span className="font-bold text-arjes-gold text-xl">
+                    {formatRp(order.total - (order.discount_amount || 0))}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Informasi Tambahan */}
+          {order.booking && (
+            <div className="mt-6 p-4 bg-blue-500/10 rounded-xl border border-blue-500/20">
+              <h4 className="text-white font-bold mb-2 flex items-center gap-2">
+                <Calendar size={16} />
+                Informasi Booking
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-400">Meja</p>
+                  <p className="text-white">Meja {order.booking.meja?.nomor || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Tanggal</p>
+                  <p className="text-white">{formatDate(order.booking.tanggal)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Waktu</p>
+                  <p className="text-white">{order.booking.jam_mulai} - {order.booking.jam_selesai}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Jumlah Orang</p>
+                  <p className="text-white">{order.booking.jumlah_orang} orang</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="p-5 bg-[#0F1F18] border-t border-white/10 flex justify-between items-center">
-           <span className="text-sm text-gray-400">Total Tagihan</span>
-           <span className="text-xl font-bold text-arjes-gold">{formatRp(order.total)}</span>
+        
+        <div className="p-6 border-t border-white/10 flex justify-between">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Tutup
+          </button>
+          {(order.status === 'pending' || order.status === 'menunggu') && (
+            <div className="flex gap-2">
+              <button className="px-6 py-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2">
+                <CheckCircle size={16} />
+                Setujui
+              </button>
+              <button className="px-6 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2">
+                <XCircle size={16} />
+                Tolak
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -65,73 +295,109 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   
-  const [activeTab, setActiveTab] = useState('orders'); 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+  const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Data State
   const [orders, setOrders] = useState([]);
-  // Filter State
-  const [revenueFilter, setRevenueFilter] = useState('today');
-
-  // Modal States
-  const [selectedProof, setSelectedProof] = useState(null);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalOrders: 0,
+    pendingOrders: 0,
+    activeUsers: 0,
+    todayRevenue: 0,
+    todayOrders: 0
+  });
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [timeFilter, setTimeFilter] = useState('today'); // today, week, month, year
 
   useEffect(() => {
-    const savedOrders = JSON.parse(localStorage.getItem('arjes_orders') || '[]');
-    setOrders(savedOrders);
-  }, []);
-
-  // --- LOGIC FUNCTIONS ---
-  const updateOrderStatus = (id, status) => {
-    const updated = orders.map(o => o.id === id ? { ...o, status } : o);
-    setOrders(updated);
-    localStorage.setItem('arjes_orders', JSON.stringify(updated));
-  };
-
-  
-
-  // --- HELPER UNTUK MENDAPATKAN LABEL TANGGAL ---
-  const getDateRangeLabel = (filter) => {
-    const today = new Date();
-    const options = { day: 'numeric', month: 'short', year: 'numeric' };
-    if (filter === 'today') return today.toLocaleDateString('id-ID', options);
-    if (filter === 'week') {
-       const lastWeek = new Date(today);
-       lastWeek.setDate(today.getDate() - 7);
-       return `${lastWeek.toLocaleDateString('id-ID', options)} - ${today.toLocaleDateString('id-ID', options)}`;
+    if (activeTab === 'dashboard' || activeTab === 'orders') {
+      fetchDashboardData();
     }
-    if (filter === 'month') return `Bulan ${today.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}`;
-    if (filter === 'year') return `Tahun ${today.getFullYear()}`;
-    return "Sejak Awal";
-  };
+  }, [activeTab, timeFilter]);
 
-  // --- LOGIKA FILTER PENDAPATAN ---
-  const getFilteredRevenue = () => {
-      const finished = orders.filter(o => o.status === 'Selesai');
-      let label = "";
-      if (revenueFilter === 'today') label = "Hari Ini";
-      else if (revenueFilter === 'week') label = "Minggu Ini";
-      else if (revenueFilter === 'month') label = "Bulan Ini";
-      else if (revenueFilter === 'year') label = "Tahun Ini";
-      else label = "Total Keseluruhan";
-
-      const baseTotal = finished.reduce((acc, curr) => acc + (curr.total || 0), 0);
-      // Simulasi angka
-      const total = revenueFilter === 'today' ? baseTotal : 
-                    revenueFilter === 'week' ? baseTotal * 7 : 
-                    revenueFilter === 'month' ? baseTotal * 30 : 
-                    revenueFilter === 'year' ? baseTotal * 365 : baseTotal * 500;
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
       
-      const count = revenueFilter === 'today' ? finished.length : finished.length * 5; 
-      return { total, count, label };
+      // Fetch orders
+      const ordersResponse = await apiClient.get('/orders');
+      if (ordersResponse.data?.data) {
+        const ordersData = Array.isArray(ordersResponse.data.data) 
+          ? ordersResponse.data.data 
+          : [ordersResponse.data.data];
+        setOrders(ordersData);
+        
+        // Calculate stats
+        const totalRevenue = ordersData
+          .filter(o => o.status === 'paid')
+          .reduce((sum, o) => sum + (o.total || 0), 0);
+        
+        const pendingOrders = ordersData
+          .filter(o => o.status === 'pending').length;
+        
+        const today = new Date().toISOString().split('T')[0];
+        const todayRevenue = ordersData
+          .filter(o => o.status === 'paid' && o.created_at?.includes(today))
+          .reduce((sum, o) => sum + (o.total || 0), 0);
+        
+        const todayOrders = ordersData
+          .filter(o => o.created_at?.includes(today)).length;
+        
+        setStats({
+          totalRevenue,
+          totalOrders: ordersData.length,
+          pendingOrders,
+          activeUsers: ordersData.filter(o => o.user_id).length,
+          todayRevenue,
+          todayOrders
+        });
+      }
+      
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const revenueData = getFilteredRevenue();
-  const pendingCount = orders.filter(o => o.status === 'Menunggu Verifikasi' || o.status === 'Menunggu Pembayaran').length;
+  const handleUpdateOrderStatus = async (orderId, status) => {
+    try {
+      await apiClient.put(`/orders/${orderId}/pay`);
+      alert(`Order berhasil diupdate menjadi ${status}`);
+      fetchDashboardData(); // Refresh data
+    } catch (err) {
+      alert('Gagal mengupdate status order: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleCancelOrder = async (orderId) => {
+    if (window.confirm('Apakah Anda yakin ingin membatalkan pesanan ini?')) {
+      try {
+        await apiClient.put(`/orders/${orderId}/cancel`);
+        alert('Pesanan berhasil dibatalkan');
+        fetchDashboardData(); // Refresh data
+      } catch (err) {
+        alert('Gagal membatalkan pesanan: ' + (err.response?.data?.message || err.message));
+      }
+    }
+  };
 
   const handleLogout = () => { 
-    logout();
+    if (window.confirm('Apakah Anda yakin ingin keluar?')) {
+      logout();
+    }
   };
+
+  // Filter orders berdasarkan status
+  const filteredOrders = orders.filter(order => {
+    if (activeTab === 'orders') return true;
+    if (activeTab === 'pending') return order.status === 'pending';
+    if (activeTab === 'completed') return order.status === 'paid';
+    return true;
+  });
 
   return (
     <div className="flex h-screen bg-arjes-bg text-arjes-text overflow-hidden font-sans selection:bg-arjes-gold selection:text-black">
@@ -167,10 +433,12 @@ const AdminDashboard = () => {
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
           {[
-            { id: 'orders', label: 'Pesanan Masuk', icon: ShoppingBag, count: pendingCount },
-            { id: 'revenue', label: 'Pendapatan', icon: FileText },
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'orders', label: 'Semua Pesanan', icon: ShoppingBag, count: stats.totalOrders },
+            { id: 'pending', label: 'Pending', icon: Clock, count: stats.pendingOrders },
+            { id: 'completed', label: 'Selesai', icon: CheckCircle },
             { id: 'menu', label: 'Daftar Menu', icon: Utensils },
-            { id: 'vouchers', label: 'Kode Promo', icon: Ticket },
+            { id: 'vouchers', label: 'Kelola Voucher', icon: Ticket },
           ].map((item) => (
             <button 
               key={item.id}
@@ -196,6 +464,17 @@ const AdminDashboard = () => {
             <span>Manajemen Meja</span>
             <ArrowRight size={16} className="ml-auto text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1" />
           </Link>
+
+          {/* Link ke Halaman Users */}
+          <Link 
+            to="/admin/users"
+            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white hover:translate-x-1 transition-all group"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <Users size={18} />
+            <span>Kelola Users</span>
+            <ArrowRight size={16} className="ml-auto text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1" />
+          </Link>
         </nav>
 
         <div className="p-6 border-t border-white/5 mt-auto">
@@ -209,204 +488,376 @@ const AdminDashboard = () => {
       <main className="flex-1 overflow-y-auto h-full p-4 md:p-12 relative z-10 scroll-smooth">
         
         {/* HEADER RESPONSIVE */}
-        <div className="mb-8 flex items-center gap-4">
+        <div className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
             <button 
-                onClick={() => setIsSidebarOpen(true)} 
-                className="md:hidden p-2 bg-[#0F1F18] border border-white/10 rounded-lg text-white shadow-lg"
+              onClick={() => setIsSidebarOpen(true)} 
+              className="md:hidden p-2 bg-[#0F1F18] border border-white/10 rounded-lg text-white shadow-lg"
             >
-                <Menu size={24} />
+              <Menu size={24} />
             </button>
             
-            {activeTab !== 'revenue' && (
-                <h2 className="text-2xl md:text-3xl font-serif font-bold text-white">
-                    {activeTab === 'orders' && 'Pesanan Masuk'}
-                    {activeTab === 'tables' && 'Manajemen Meja'}
-                    {activeTab === 'menu' && 'Daftar Menu'}
-                    {activeTab === 'vouchers' && 'Kelola Promo'}
-                </h2>
-            )}
+            <h2 className="text-2xl md:text-3xl font-serif font-bold text-white">
+              {activeTab === 'dashboard' && 'Dashboard Admin'}
+              {activeTab === 'orders' && 'Semua Pesanan'}
+              {activeTab === 'pending' && 'Pesanan Pending'}
+              {activeTab === 'completed' && 'Pesanan Selesai'}
+              {activeTab === 'menu' && 'Daftar Menu'}
+              {activeTab === 'vouchers' && 'Kelola Voucher'}
+            </h2>
+          </div>
+          
+          <button 
+            onClick={fetchDashboardData}
+            className="p-2 bg-[#0F1F18] border border-white/10 rounded-lg text-white hover:bg-white/10 transition-colors"
+            disabled={loading}
+          >
+            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
 
-        {/* --- 1. TAB PESANAN MASUK --- */}
-        {activeTab === 'orders' && (
-            <div className="bg-[#0F1F18] border border-white/10 rounded-3xl overflow-hidden shadow-2xl animate-in fade-in">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left min-w-[900px] md:min-w-0">
-                        <thead className="bg-black/30 text-gray-400 text-xs uppercase tracking-wider font-bold">
-                            <tr><th className="px-6 py-5">Order ID</th><th className="px-6 py-5">Nama Customer</th><th className="px-6 py-5">Tipe</th><th className="px-6 py-5">Total & Metode</th><th className="px-6 py-5 text-right">Aksi</th></tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5 text-sm text-gray-300">
-                            {orders.length === 0 ? (
-                                <tr><td colSpan="5" className="px-6 py-16 text-center text-gray-500 italic">Belum ada pesanan masuk.</td></tr>
-                            ) : (
-                                orders.map(order => {
-                                    const hasBooking = order.items.some(i => i.category === 'reservation');
-                                    let typeBadge = hasBooking ? <span className="text-blue-400 font-bold text-xs">Booking</span> : (order.type === 'pickup' ? <span className="text-purple-400 font-bold text-xs">Pick Up</span> : <span className="text-yellow-400 font-bold text-xs">Dine In</span>);
-
-                                    return (
-                                        <tr key={order.id} className="hover:bg-white/5 transition-colors">
-                                            <td className="px-6 py-5 font-mono text-arjes-gold font-bold">#{order.id.slice(-6)}</td>
-                                            <td className="px-6 py-5 text-white font-medium">{order.customerName || 'Guest User'}</td>
-                                            <td className="px-6 py-5">
-                                                {typeBadge}
-                                                <div className="text-xs text-gray-500 mt-1">{order.date} • {order.time}</div>
-                                            </td>
-                                            <td className="px-6 py-5">
-                                                <div className="font-bold text-white text-base">{formatRp(order.total)}</div>
-                                                {order.method === 'qris' ? (
-                                                    <button onClick={() => setSelectedProof(order)} className="mt-1 flex items-center gap-1.5 text-xs text-green-400 hover:underline"><Eye size={12}/> Cek Bukti</button>
-                                                ) : (
-                                                    <span className="text-xs text-yellow-500 flex items-center gap-1 mt-1"><Store size={12}/> Tunai</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-5 text-right flex justify-end gap-2">
-                                                {order.status === 'Selesai' ? <span className="text-green-500 font-bold text-xs">✅ Selesai</span> : 
-                                                 order.status === 'Dibatalkan' ? <span className="text-red-500 font-bold text-xs">❌ Ditolak</span> :
-                                                 <>
-                                                    <button onClick={() => updateOrderStatus(order.id, 'Selesai')} className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500 hover:text-white transition-all"><CheckCircle size={18}/></button>
-                                                    <button onClick={() => updateOrderStatus(order.id, 'Dibatalkan')} className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all"><XCircle size={18}/></button>
-                                                 </>}
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-                {selectedProof && <ProofModal order={selectedProof} onClose={() => setSelectedProof(null)} />}
+        {/* --- 1. TAB DASHBOARD --- */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6 animate-in fade-in">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <StatCard 
+                title="Total Pendapatan" 
+                value={formatRp(stats.totalRevenue)}
+                subtext="Sejak awal"
+                icon={DollarSign}
+                color="text-arjes-gold"
+                loading={loading}
+              />
+              
+              <StatCard 
+                title="Total Pesanan" 
+                value={stats.totalOrders}
+                subtext={`${stats.todayOrders} hari ini`}
+                icon={ShoppingBag}
+                color="text-white"
+                trend={{ value: 12 }}
+                loading={loading}
+              />
+              
+              <StatCard 
+                title="Pesanan Pending" 
+                value={stats.pendingOrders}
+                subtext="Menunggu konfirmasi"
+                icon={Clock}
+                color="text-yellow-400"
+                loading={loading}
+              />
+              
+              <StatCard 
+                title="User Aktif" 
+                value={stats.activeUsers}
+                subtext="User dengan pesanan"
+                icon={Users}
+                color="text-blue-400"
+                loading={loading}
+              />
+              
+              <StatCard 
+                title="Pendapatan Hari Ini" 
+                value={formatRp(stats.todayRevenue)}
+                subtext={`Dari ${stats.todayOrders} pesanan`}
+                icon={TrendingUp}
+                color="text-green-400"
+                loading={loading}
+              />
+              
+              <StatCard 
+                title="Rata-rata Pesanan" 
+                value={stats.totalOrders > 0 ? formatRp(stats.totalRevenue / stats.totalOrders) : formatRp(0)}
+                subtext="Per pesanan"
+                icon={BarChart}
+                color="text-purple-400"
+                loading={loading}
+              />
             </div>
-        )}
 
-        {/* --- 2. TAB PENDAPATAN --- */}
-        {activeTab === 'revenue' && (
-            <div className="space-y-6 animate-in fade-in">
-                <div className="mb-6">
-                    <h2 className="text-2xl md:text-3xl font-serif font-bold text-white mb-4">Laporan Pendapatan</h2>
-                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                        <div className="relative w-full sm:w-auto">
-                            <select 
-                                value={revenueFilter} 
-                                onChange={(e) => setRevenueFilter(e.target.value)}
-                                className="w-full sm:w-48 bg-[#0F1F18] border border-white/20 text-white pl-4 pr-10 py-2.5 rounded-xl appearance-none cursor-pointer hover:border-arjes-gold outline-none focus:border-arjes-gold transition-all font-bold text-sm"
+            {/* Recent Orders */}
+            <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden">
+              <div className="p-6 border-b border-white/10 flex justify-between items-center">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Activity size={20} />
+                  Pesanan Terbaru
+                </h3>
+                <Link to="/admin/orders" className="text-sm text-arjes-gold hover:text-yellow-400">
+                  Lihat semua →
+                </Link>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-black/30 text-xs uppercase font-bold text-gray-500">
+                    <tr>
+                      <th className="p-4">ID</th>
+                      <th className="p-4">Customer</th>
+                      <th className="p-4">Tanggal</th>
+                      <th className="p-4">Total</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {loading ? (
+                      <tr>
+                        <td colSpan="6" className="p-8 text-center">
+                          <Loader2 className="animate-spin text-arjes-gold mx-auto" size={24} />
+                        </td>
+                      </tr>
+                    ) : orders.slice(0, 5).map((order) => (
+                      <tr key={order.id} className="hover:bg-white/5">
+                        <td className="p-4 font-mono text-arjes-gold">#{order.id}</td>
+                        <td className="p-4">
+                          <p className="text-white font-medium">{order.user?.name || 'Guest'}</p>
+                          <p className="text-xs text-gray-400">{order.user?.email || '-'}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-white">{formatDate(order.created_at)}</p>
+                          <p className="text-xs text-gray-400">{formatTime(order.created_at)}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-white font-bold">{formatRp(order.total)}</p>
+                          {order.discount_amount > 0 && (
+                            <p className="text-xs text-green-400">-{formatRp(order.discount_amount)}</p>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedOrder(order)}
+                              className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
                             >
-                                <option value="today">Hari Ini</option>
-                                <option value="week">Minggu Ini</option>
-                                <option value="month">Bulan Ini</option>
-                                <option value="year">Tahun Ini</option>
-                                <option value="all">Total Keseluruhan</option>
-                            </select>
-                            <Filter size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
-                        </div>
-                        <div className="flex items-center gap-2 px-4 py-2.5 bg-white/5 rounded-xl text-sm border border-white/5 w-full sm:w-auto">
-                            <Calendar size={16} className="text-arjes-gold" />
-                            <span className="text-gray-300 font-medium">{getDateRangeLabel(revenueFilter)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <RevenueCard title={`Pendapatan (${revenueData.label})`} value={formatRp(revenueData.total)} color="green" subtext="Akumulasi total pesanan selesai." />
-                    <RevenueCard title={`Transaksi (${revenueData.label})`} value={`${revenueData.count} Order`} color="white" subtext="Jumlah transaksi berhasil." />
-                </div>
-
-                <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden">
-                    <div className="p-6 border-b border-white/10"><h3 className="font-bold text-white">Log Transaksi Masuk</h3></div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm text-gray-400 min-w-[600px] md:min-w-0">
-                            <thead className="bg-black/30 text-xs uppercase font-bold text-gray-500">
-                                <tr><th className="p-4">Tanggal</th><th className="p-4">ID Transaksi</th><th className="p-4">Customer</th><th className="p-4">Nominal</th></tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {orders.filter(o => o.status === 'Selesai').map(o => (
-                                    <tr key={o.id}>
-                                        <td className="p-4">{o.date} {o.time}</td>
-                                        <td className="p-4 font-mono text-arjes-gold">{o.id}</td>
-                                        <td className="p-4">{o.customerName || 'Guest'}</td>
-                                        <td className="p-4 font-bold text-white">{formatRp(o.total)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                              <Eye size={16} />
+                            </button>
+                            {order.status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'paid')}
+                                  className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500 hover:text-white transition-colors"
+                                >
+                                  <CheckCircle size={16} />
+                                </button>
+                                <button
+                                  onClick={() => handleCancelOrder(order.id)}
+                                  className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                                >
+                                  <XCircle size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
+          </div>
         )}
 
-        {/* --- 3. TAB MANAJEMEN MEJA (MENU LINK KE HALAMAN KHUSUS) --- */}
-        {activeTab === 'tables' && (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
-                <div className="bg-white/5 p-6 rounded-full border border-white/5">
-                    <Table size={48} className="text-arjes-gold" />
+        {/* --- 2. TAB PESANAN --- */}
+        {(activeTab === 'orders' || activeTab === 'pending' || activeTab === 'completed') && (
+          <div className="space-y-6 animate-in fade-in">
+            {/* Filter Controls */}
+            <div className="bg-[#0F1F18] border border-white/10 rounded-2xl p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Filter Status</label>
+                  <select 
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold"
+                    value={activeTab}
+                    onChange={(e) => setActiveTab(e.target.value)}
+                  >
+                    <option value="orders">Semua Pesanan</option>
+                    <option value="pending">Pending</option>
+                    <option value="completed">Selesai</option>
+                    <option value="cancelled">Dibatalkan</option>
+                  </select>
                 </div>
                 <div>
-                    <h3 className="text-2xl font-bold text-white">Manajemen Meja Restoran</h3>
-                    <p className="text-gray-400 mt-2 max-w-md mx-auto">
-                        Masuk ke halaman manajemen meja tingkat lanjut untuk menambah, mengedit, atau menghapus meja dan tipe meja.
-                    </p>
+                  <label className="block text-xs text-gray-400 mb-2">Jenis Order</label>
+                  <select className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold">
+                    <option value="all">Semua Jenis</option>
+                    <option value="dine_in">Dine In</option>
+                    <option value="pickup">Pickup</option>
+                  </select>
                 </div>
-                
-                <Link 
-                  to="/admin/tables" 
-                  className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-arjes-gold text-[#0F1F18] group-hover:scale-110 transition-transform">
-                    <Table size={24} />
-                  </div>
-                  <div className="text-left">
-                    <h3 className="font-bold text-white group-hover:text-arjes-gold transition-colors">Buka Manajemen Meja</h3>
-                    <p className="text-sm text-gray-500">Kelola Meja & Tipe Meja</p>
-                  </div>
-                  <ArrowRight className="ml-4 text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1 transition-all" />
-                </Link>
-                
-                {/* Quick Stats */}
-                <div className="grid grid-cols-2 gap-4 mt-6">
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <p className="text-sm text-gray-400">Total Meja</p>
-                    <p className="text-2xl font-bold text-white mt-1">8</p>
-                  </div>
-                  <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-                    <p className="text-sm text-gray-400">Tersedia</p>
-                    <p className="text-2xl font-bold text-green-400 mt-1">5</p>
-                  </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Tanggal</label>
+                  <input 
+                    type="date"
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-arjes-gold"
+                  />
                 </div>
+              </div>
             </div>
+
+            {/* Orders Table */}
+            <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm min-w-[1000px] md:min-w-0">
+                  <thead className="bg-black/30 text-xs uppercase font-bold text-gray-500">
+                    <tr>
+                      <th className="p-4">ID Pesanan</th>
+                      <th className="p-4">Customer</th>
+                      <th className="p-4">Tanggal</th>
+                      <th className="p-4">Jenis</th>
+                      <th className="p-4">Items</th>
+                      <th className="p-4">Total</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {loading ? (
+                      <tr>
+                        <td colSpan="8" className="p-8 text-center">
+                          <Loader2 className="animate-spin text-arjes-gold mx-auto" size={24} />
+                          <p className="text-gray-400 mt-2">Memuat data pesanan...</p>
+                        </td>
+                      </tr>
+                    ) : filteredOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" className="p-8 text-center text-gray-500">
+                          <AlertCircle className="mx-auto mb-2" size={32} />
+                          <p>Tidak ada pesanan yang ditemukan</p>
+                        </td>
+                      </tr>
+                    ) : filteredOrders.map((order) => (
+                      <tr key={order.id} className="hover:bg-white/5">
+                        <td className="p-4">
+                          <p className="font-mono text-arjes-gold font-bold">#{order.id}</p>
+                          <p className="text-xs text-gray-400">{order.order_number}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-white font-medium">{order.user?.name || 'Guest'}</p>
+                          <p className="text-xs text-gray-400">{order.user?.email || '-'}</p>
+                          {order.booking && (
+                            <p className="text-xs text-blue-400 mt-1">
+                              <Calendar size={12} className="inline mr-1" />
+                              Booking meja
+                            </p>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <p className="text-white">{formatDate(order.created_at)}</p>
+                          <p className="text-xs text-gray-400">{formatTime(order.created_at)}</p>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            order.jenis_order === 'pickup' 
+                              ? 'bg-blue-500/20 text-blue-400' 
+                              : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {order.jenis_order === 'pickup' ? 'Pickup' : 'Dine In'}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-white">
+                            {order.order_items?.length || 0} item
+                          </p>
+                          <p className="text-xs text-gray-400 truncate max-w-xs">
+                            {order.order_items?.map(item => item.menu?.nama).join(', ') || '-'}
+                          </p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-white font-bold">{formatRp(order.total)}</p>
+                          {order.discount_amount > 0 && (
+                            <p className="text-xs text-green-400">Diskon: -{formatRp(order.discount_amount)}</p>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>
+                            {getStatusIcon(order.status)}
+                            <span className="ml-1">{order.status}</span>
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedOrder(order)}
+                              className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center gap-2"
+                            >
+                              <Eye size={14} /> Detail
+                            </button>
+                            {order.status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'paid')}
+                                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                                >
+                                  <CheckCircle size={14} /> Setujui
+                                </button>
+                                <button
+                                  onClick={() => handleCancelOrder(order.id)}
+                                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                                >
+                                  <XCircle size={14} /> Tolak
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         )}
 
-        {/* --- 4. TAB MANAJEMEN MENU --- */}
+        {/* --- 3. TAB MANAJEMEN MENU --- */}
         {activeTab === 'menu' && (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
-                <div className="bg-white/5 p-6 rounded-full border border-white/5">
-                    <Utensils size={48} className="text-arjes-gold" />
-                </div>
-                <div>
-                    <h3 className="text-2xl font-bold text-white">Kelola Menu Restoran</h3>
-                    <p className="text-gray-400 mt-2 max-w-md mx-auto">
-                        Masuk ke halaman manajemen menu tingkat lanjut untuk menambah, mengedit, atau menghapus menu.
-                    </p>
-                </div>
-                
-                <Link 
-                  to="/admin/menu" 
-                  className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-arjes-gold text-[#0F1F18] group-hover:scale-110 transition-transform">
-                    <Utensils size={24} />
-                  </div>
-                  <div className="text-left">
-                    <h3 className="font-bold text-white group-hover:text-arjes-gold transition-colors">Buka Manajemen Menu</h3>
-                    <p className="text-sm text-gray-500">Tambah & Hapus Makanan</p>
-                  </div>
-                  <ArrowRight className="ml-4 text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1 transition-all" />
-                </Link>
+          <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
+            <div className="bg-white/5 p-6 rounded-full border border-white/5">
+              <Utensils size={48} className="text-arjes-gold" />
             </div>
+            <div>
+              <h3 className="text-2xl font-bold text-white">Kelola Menu Restoran</h3>
+              <p className="text-gray-400 mt-2 max-w-md mx-auto">
+                Masuk ke halaman manajemen menu tingkat lanjut untuk menambah, mengedit, atau menghapus menu.
+              </p>
+            </div>
+            
+            <Link 
+              to="/admin/menu" 
+              className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-arjes-gold text-[#0F1F18] group-hover:scale-110 transition-transform">
+                <Utensils size={24} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-bold text-white group-hover:text-arjes-gold transition-colors">Buka Manajemen Menu</h3>
+                <p className="text-sm text-gray-500">Tambah & Hapus Makanan</p>
+              </div>
+              <ArrowRight className="ml-4 text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1 transition-all" />
+            </Link>
+          </div>
         )}
 
-        {/* --- 5. TAB PROMO VOUCHER --- */}
+        {/* --- 4. TAB KELOLA VOUCHER --- */}
         {activeTab === 'vouchers' && (
-         <VoucherAdminPage />
-         )}
+          <VoucherAdminPage />
+        )}
+
+        {/* Order Detail Modal */}
+        {selectedOrder && (
+          <OrderDetailModal 
+            order={selectedOrder} 
+            onClose={() => setSelectedOrder(null)} 
+          />
+        )}
       </main>
     </div>
   );

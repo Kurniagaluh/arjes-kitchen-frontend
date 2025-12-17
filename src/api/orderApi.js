@@ -29,8 +29,18 @@ export const getMyOrders = async () => {
   return response;
 };
 
+export const getAllOrders = async (params = {}) => {
+  const response = await apiClient.get('/orders', { params });
+  return response;
+};
+
 export const getMyPickups = async () => {
   const response = await apiClient.get('/pickup/me');
+  return response;
+};
+
+export const getAllPickups = async () => {
+  const response = await apiClient.get('/pickups');
   return response;
 };
 
@@ -46,5 +56,10 @@ export const markOrderAsPaid = async (orderId) => {
 
 export const checkVoucher = async (voucherCode) => {
   const response = await apiClient.get(`/vouchers/check/${voucherCode}`);
+  return response;
+};
+
+export const getOrderById = async (orderId) => {
+  const response = await apiClient.get(`/orders/${orderId}`);
   return response;
 };

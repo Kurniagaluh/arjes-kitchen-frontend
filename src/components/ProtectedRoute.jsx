@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+  const { isAuthenticated, isAdmin, loading, user } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -21,7 +21,13 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
 
   // Jika require admin tapi bukan admin
   if (requireAdmin && !isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/" replace />; 
+  }
+
+  if (!user) {
+    // Simpan URL yang dituju sebelum redirect ke login
+    localStorage.setItem('redirectUrl', window.location.pathname);
+    return <Navigate to="/login" />;
   }
 
   return children;
