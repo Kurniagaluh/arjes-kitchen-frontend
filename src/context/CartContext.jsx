@@ -1,6 +1,5 @@
-// src/context/CartContext.jsx
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { checkVoucher } from '../api/orderApi'; // Import dari orderApi
+// src/context/CartContext.jsx - PERBAIKAN UNTUK INKONSISTENSI DATA
+import React, { createContext, useState, useContext, useEffect, useMemo, useCallback } from 'react';
 
 const CartContext = createContext();
 
@@ -8,330 +7,333 @@ export const CartProvider = ({ children }) => {
   // --- STATE ---
   const [cartItems, setCartItems] = useState(() => {
     try {
-      const savedCart = localStorage.getItem('arjes_cart');
-      return savedCart ? JSON.parse(savedCart) : [];
+      return JSON.parse(localStorage.getItem('arjes_cart') || '[]');
     } catch (e) {
-      console.error('Error loading cart from localStorage:', e);
+      console.error('Gagal load cart:', e);
       return [];
     }
   });
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeVoucher, setActiveVoucher] = useState(() => {
     try {
-      const savedVoucher = localStorage.getItem('arjes_voucher');
-      return savedVoucher ? JSON.parse(savedVoucher) : null;
+      return JSON.parse(localStorage.getItem('arjes_voucher') || 'null');
     } catch (e) {
-      console.error('Error loading voucher from localStorage:', e);
+      console.error('Gagal load voucher:', e);
       return null;
     }
   });
 
-  // Simpan ke LocalStorage
+  // Sync ke localStorage
   useEffect(() => {
     localStorage.setItem('arjes_cart', JSON.stringify(cartItems));
   }, [cartItems]);
 
   useEffect(() => {
-    if (activeVoucher) {
-      localStorage.setItem('arjes_voucher', JSON.stringify(activeVoucher));
-    } else {
-      localStorage.removeItem('arjes_voucher');
-    }
+    localStorage.setItem('arjes_voucher', JSON.stringify(activeVoucher));
   }, [activeVoucher]);
 
   // --- ACTIONS ---
-  const addToCart = (product) => {  
-    // Pastikan product memiliki menu_id (sesuai backend)
-    const productId = product.menu_id || product.id || `item-${Date.now()}`;
-    const menuId = product.menu_id || product.id;
-    
-    setCartItems(prevCart => {
-      // Cari item berdasarkan menu_id (untuk makanan) atau id (untuk booking)
-      const existingItemIndex = prevCart.findIndex(item => 
-        (item.menu_id && item.menu_id === menuId) || item.id === productId
-      );
-      
-      if (existingItemIndex !== -1) {
-        // Item sudah ada, update quantity
-        const updatedCart = [...prevCart];
-        const existingItem = updatedCart[existingItemIndex];
-        
-        // Cek stok tersedia
-        if (product.stok && existingItem.qty >= product.stok) {
-          alert(`⚠️ Stok ${product.name} terbatas. Hanya tersisa ${product.stok}`);
-          return prevCart;
-        }
-        
-        updatedCart[existingItemIndex] = {
-          ...existingItem,
-          qty: existingItem.qty + 1,
-          subtotal: (existingItem.price || 0) * (existingItem.qty + 1)
-        };
-        
-        return updatedCart;
-      } else {
-        // Item baru, tambahkan ke cart
-        const newItem = {
-          ...product,
-          id: productId,
-          menu_id: menuId, // Pastikan ada menu_id untuk backend
-          qty: 1,
-          subtotal: product.price || 0
-        };
-        
-        return [...prevCart, newItem];
+  const addToCart = useCallback((product) => {
+    const id = product.menu_id || product.id || `temp-${Date.now()}`;
+    setCartItems(prev => {
+      const existing = prev.find(item => item.menu_id === product.menu_id);
+      if (existing) {
+        return prev.map(item =>
+          item.menu_id === product.menu_id
+            ? { ...item, qty: item.qty + 1 }
+            : item
+        );
       }
+      return [...prev, { ...product, id, qty: 1 }];
     });
-  };
+  }, []);
 
-  const decreaseQty = (itemId) => {
-    setCartItems((prev) => {
-      return prev.map(item => {
-        if (item.id === itemId) {
-          const newQty = item.qty - 1;
-          if (newQty <= 0) {
-            return null; // Hapus item jika qty 0
-          }
-          return {
-            ...item,
-            qty: newQty,
-            subtotal: (item.price || 0) * newQty
-          };
-        }
-        return item;
-      }).filter(item => item !== null);
-    });
-  };
-
-  const removeFromCart = (itemId) => {
-    setCartItems((prev) => prev.filter((item) => item.id !== itemId));
-  };
-
-  // Fungsi untuk update quantity langsung
-  const updateQuantity = (itemId, newQty) => {
-    if (newQty < 1) {
-      removeFromCart(itemId);
-      return;
-    }
-
-    setCartItems(prevCart => 
-      prevCart.map(item => 
-        item.id === itemId 
-          ? {
-              ...item,
-              qty: newQty,
-              subtotal: (item.price || 0) * newQty
-            }
+  const decreaseQty = useCallback((id) => {
+    setCartItems(prev =>
+      prev.map(item =>
+        item.id === id && item.qty > 1
+          ? { ...item, qty: item.qty - 1 }
           : item
-      )
+      ).filter(item => item.id !== id || item.qty > 0)
     );
-  };
+  }, []);
 
-  // Fungsi untuk mengosongkan cart
-  const clearCart = () => {
+  const removeFromCart = useCallback((id) => {
+    setCartItems(prev => prev.filter(item => item.id !== id));
+  }, []);
+
+  const clearCart = useCallback(() => {
     setCartItems([]);
     setActiveVoucher(null);
-  };
+  }, []);
 
-  // --- CALCULATIONS ---
-  const calculateSubtotal = cartItems.reduce((total, item) => 
-    total + (parseFloat(item.price || 0) * (item.qty || 1)), 0);
-
-  const calculateDiscount = () => {
-    if (!activeVoucher) return 0;
-    
-    let discount = 0;
-    
-    if (activeVoucher.type === 'percentage') {
-      // Untuk diskon persentase
-      discount = calculateSubtotal * (parseFloat(activeVoucher.value) / 100);
-      
-      // Cek maksimum diskon jika ada
-      if (activeVoucher.max_diskon && discount > parseFloat(activeVoucher.max_diskon)) {
-        discount = parseFloat(activeVoucher.max_diskon);
-      }
-    } else if (activeVoucher.type === 'fixed') {
-      // Untuk diskon nominal
-      discount = parseFloat(activeVoucher.value);
-      
-      // Pastikan diskon tidak melebihi subtotal
-      if (discount > calculateSubtotal) {
-        discount = calculateSubtotal;
-      }
-    }
-    
-    return discount;
-  };
-
-  const discountAmount = calculateDiscount();
-  const calculateTotal = calculateSubtotal - discountAmount;
-
-  // Fungsi untuk mengaplikasikan voucher dari backend
-  const applyVoucher = async (code) => {
-    if (!code || code === "REMOVE") {
+  // ✅ PERBAIKAN BESAR: Handle inkonsistensi tipe voucher
+  const applyVoucher = useCallback((voucherData) => {
+    if (!voucherData || voucherData.code === 'REMOVE') {
       setActiveVoucher(null);
-      return;
+      return { success: false, message: 'Voucher dihapus' };
     }
 
-    const upperCode = code.toUpperCase();
+    console.log('🔄 APPLY VOUCHER RAW DATA:', voucherData);
     
-    try {
-      // Cek voucher melalui API
-      const response = await checkVoucher(upperCode);
-      
-      if (response.data.valid) {
-        const voucher = response.data.voucher;
-        
-        // Convert format dari backend ke frontend sesuai response yang diberikan
-        const voucherData = {
-          code: voucher.kode,
-          name: voucher.nama || voucher.kode, // Jika nama null, gunakan kode
-          type: voucher.tipe_diskon === 'persen' ? 'percentage' : 'fixed',
-          value: voucher.tipe_diskon === 'persen' 
-            ? parseFloat(voucher.diskon_persen) 
-            : parseFloat(voucher.diskon_nominal),
-          min_pembelian: parseFloat(voucher.minimum_order || 0),
-          max_diskon: voucher.maksimum_diskon ? parseFloat(voucher.maksimum_diskon) : null,
-          berlaku_hingga: voucher.expired_at, // Sesuai field dari response
-          status: voucher.status,
-          limit_penggunaan: voucher.limit_penggunaan,
-          penggunaan_sekarang: voucher.penggunaan_sekarang || 0,
-          tipe_diskon: voucher.tipe_diskon,
-          diskon_persen: voucher.diskon_persen ? parseFloat(voucher.diskon_persen) : null,
-          diskon_nominal: voucher.diskon_nominal ? parseFloat(voucher.diskon_nominal) : null
-        };
-        
-        // Validasi minimal pembelian
-        if (voucherData.min_pembelian > 0 && calculateSubtotal < voucherData.min_pembelian) {
-          alert(`❌ Minimal pembelian Rp ${voucherData.min_pembelian.toLocaleString('id-ID')} untuk menggunakan voucher ini.`);
-          return;
-        }
-        
-        // Validasi tanggal berlaku
-        if (voucherData.berlaku_hingga) {
-          const expireDate = new Date(voucherData.berlaku_hingga);
-          const today = new Date();
-          if (expireDate < today) {
-            alert('❌ Voucher sudah kadaluarsa!');
-            return;
-          }
-        }
-        
-        // Validasi status
-        if (voucherData.status !== 'aktif') {
-          alert('❌ Voucher tidak aktif!');
-          return;
-        }
-        
-        // Validasi limit penggunaan
-        if (voucherData.limit_penggunaan > 0 && 
-            voucherData.penggunaan_sekarang >= voucherData.limit_penggunaan) {
-          alert('❌ Voucher sudah habis digunakan!');
-          return;
-        }
-        
-        setActiveVoucher(voucherData);
-        alert(`✅ Voucher "${voucherData.name}" berhasil diaplikasikan!`);
-      } else {
-        alert(`❌ ${response.data.message || 'Kode voucher tidak valid'}`);
-      }
-    } catch (error) {
-      console.error('Error applying voucher:', error);
-      if (error.response?.status === 404) {
-        alert('❌ Voucher tidak ditemukan!');
-      } else if (error.response?.status === 400) {
-        alert(`❌ ${error.response.data.message || 'Voucher tidak valid!'}`);
-      } else {
-        alert('❌ Gagal memeriksa voucher. Coba lagi nanti.');
+    // ✅ FIX: Deteksi tipe voucher secara otomatis berdasarkan data yang ada
+    let type = 'fixed'; // default
+    let value = 0;
+    
+    // ✅ LOGIC: Jika ada diskon_nominal, itu voucher nominal (fixed)
+    // Jika ada diskon_persen, itu voucher persen (percentage)
+    if (voucherData.diskon_nominal !== null && voucherData.diskon_nominal !== undefined) {
+      type = 'fixed';
+      value = Number(voucherData.diskon_nominal) || 0;
+      console.log('💰 Voucher NOMINAL detected:', value);
+    } 
+    else if (voucherData.diskon_persen !== null && voucherData.diskon_persen !== undefined) {
+      type = 'percentage';
+      value = Number(voucherData.diskon_persen) || 0;
+      console.log('📊 Voucher PERSEN detected:', value + '%');
+    }
+    // Fallback ke tipe_diskon jika tidak ada data nominal/persen
+    else if (voucherData.tipe_diskon) {
+      const tipe = voucherData.tipe_diskon.trim().toLowerCase();
+      if (tipe === 'persen' || tipe === 'percentage') {
+        type = 'percentage';
+        value = Number(voucherData.value) || 0;
+      } else if (tipe === 'nominal' || tipe === 'fixed') {
+        type = 'fixed';
+        value = Number(voucherData.value) || 0;
       }
     }
-  };
-
-  // Fungsi untuk menghapus voucher
-  const removeVoucher = () => {
-    setActiveVoucher(null);
-  };
-
-  // Hitung total item di cart
-  const getTotalItems = () => {
-    return cartItems.reduce((total, item) => total + (item.qty || 1), 0);
-  };
-
-  // Fungsi untuk menambahkan booking ke cart
-  const addBookingToCart = (bookingData) => {
-    const bookingItem = {
-      id: `booking-${bookingData.id || Date.now()}`,
-      menu_id: bookingData.id, // Pastikan ada menu_id
-      name: bookingData.meja?.nama || 'Booking Meja',
-      price: parseFloat(bookingData.meja?.harga_per_jam || 0),
-      category: 'booking',
-      qty: 1,
-      subtotal: parseFloat(bookingData.meja?.harga_per_jam || 0),
-      details: {
-        meja: bookingData.meja?.nama,
-        tanggal: bookingData.tanggal,
-        waktu: `${new Date(bookingData.tanggal).toLocaleTimeString('id-ID', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })} - ${new Date(bookingData.waktu_selesai).toLocaleTimeString('id-ID', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })}`,
-        jumlah_orang: bookingData.jumlah_orang,
-        catatan: bookingData.catatan,
-        booking_id: bookingData.id
-      }
+    
+    // Konversi tipe data
+    const v = {
+      id: voucherData.id,
+      code: voucherData.kode || voucherData.code,
+      name: voucherData.nama || voucherData.name || voucherData.kode || voucherData.code,
+      description: voucherData.deskripsi || '',
+      
+      // ✅ FIX: Gunakan tipe yang sudah dideteksi
+      type: type,
+      value: value,
+      
+      min_pembelian: Number(voucherData.minimum_order) || 0,
+      max_diskon: voucherData.maksimum_diskon ? Number(voucherData.maksimum_diskon) : null,
+      limit_penggunaan: Number(voucherData.limit_penggunaan) || 0,
+      penggunaan_sekarang: Number(voucherData.penggunaan_sekarang) || 0,
+      status: voucherData.status,
+      tanggal_mulai: voucherData.tanggal_mulai,
+      berlaku_hingga: voucherData.expired_at,
+      hanya_untuk_user_tertentu: voucherData.hanya_untuk_user_tertentu || false,
+      user_ids: voucherData.user_ids,
+      
+      // Simpan data original untuk debugging
+      _raw: voucherData
     };
 
-    addToCart(bookingItem);
-  };
+    console.log('✅ VOUCHER PROCESSED FINAL:', {
+      code: v.code,
+      type: v.type,
+      value: v.value,
+      min_pembelian: v.min_pembelian,
+      max_diskon: v.max_diskon,
+      status: v.status,
+      expired: v.berlaku_hingga
+    });
 
-  // Fungsi untuk mendapatkan cart items dalam format yang sesuai dengan backend
-  const getCartItemsForBackend = () => {
-    return cartItems
-      .filter(item => item.category !== 'booking') // Hanya item makanan/minuman
-      .map(item => ({
-        menu_id: item.menu_id || item.id,
-        qty: item.qty || 1
-      }));
-  };
+    // Simpan voucher data ke state
+    setActiveVoucher(v);
+    return { success: true, voucher: v };
+  }, []);
 
-  // Fungsi untuk mendapatkan booking_id jika ada
-  const getBookingId = () => {
+  const removeVoucher = useCallback(() => {
+    console.log('🗑️ Removing voucher');
+    setActiveVoucher(null);
+  }, []);
+
+  // --- CALCULATIONS dengan useMemo ---
+  const calculations = useMemo(() => {
+    console.log('🧮 RECALCULATING CART...');
+    
+    // Pisahkan food items dan booking item
+    const foodItems = cartItems.filter(item => item.category !== 'booking');
     const bookingItem = cartItems.find(item => item.category === 'booking');
-    return bookingItem?.details?.booking_id || null;
-  };
+    
+    // Hitung subtotal
+    const subtotal = foodItems.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const qty = Number(item.qty) || 1;
+      return sum + (price * qty);
+    }, 0);
+    
+    console.log('📦 Food items:', foodItems.length);
+    console.log('💰 Subtotal:', subtotal);
+    
+    // ✅ PERHITUNGAN DISKON REAL-TIME
+    let discount = 0;
+    let voucherValid = true;
+    let validationMessage = '';
+    
+    if (activeVoucher) {
+      console.log('🎫 ACTIVE VOUCHER DETAILS:', activeVoucher);
+      console.log('📊 Voucher code:', activeVoucher.code);
+      console.log('📊 Voucher type:', activeVoucher.type);
+      console.log('📊 Voucher value:', activeVoucher.value);
+      console.log('📊 Min pembelian:', activeVoucher.min_pembelian);
+      console.log('📊 Status:', activeVoucher.status);
+      console.log('📊 Expired at:', activeVoucher.berlaku_hingga);
+      
+      // ✅ FIX: Validasi status (case insensitive)
+      const status = activeVoucher.status ? activeVoucher.status.trim().toLowerCase() : '';
+      if (status !== 'aktif') {
+        voucherValid = false;
+        validationMessage = 'Voucher tidak aktif';
+        console.log('❌ Voucher status invalid:', status);
+      }
+      
+      // Validasi minimal pembelian
+      if (activeVoucher.min_pembelian > 0 && subtotal < activeVoucher.min_pembelian) {
+        voucherValid = false;
+        validationMessage = `Minimal pembelian Rp${activeVoucher.min_pembelian.toLocaleString('id-ID')}`;
+        console.log('❌ Min pembelian not met:', subtotal, '<', activeVoucher.min_pembelian);
+      }
+      
+      // Validasi tanggal berlaku
+      if (activeVoucher.berlaku_hingga) {
+        const expireDate = new Date(activeVoucher.berlaku_hingga);
+        const today = new Date();
+        
+        console.log('📅 Date check:', {
+          expireDate: expireDate.toISOString(),
+          today: today.toISOString(),
+          expired: expireDate < today
+        });
+        
+        if (expireDate < today) {
+          voucherValid = false;
+          validationMessage = 'Voucher sudah kadaluarsa';
+          console.log('❌ Voucher expired');
+        }
+      }
+      
+      // Validasi limit penggunaan
+      if (activeVoucher.limit_penggunaan > 0 && 
+          activeVoucher.penggunaan_sekarang >= activeVoucher.limit_penggunaan) {
+        voucherValid = false;
+        validationMessage = 'Voucher sudah habis digunakan';
+        console.log('❌ Voucher limit reached:', 
+          activeVoucher.penggunaan_sekarang, '/', activeVoucher.limit_penggunaan);
+      }
+      
+      // ✅ FIX: Hitung diskon berdasarkan tipe
+      if (voucherValid) {
+        if (activeVoucher.type === 'percentage') {
+          discount = subtotal * (activeVoucher.value / 100);
+          console.log(`📈 Percentage discount: ${activeVoucher.value}% of ${subtotal} = ${discount}`);
+        } else if (activeVoucher.type === 'fixed') {
+          discount = Math.min(activeVoucher.value, subtotal);
+          console.log(`📈 Fixed discount: min(${activeVoucher.value}, ${subtotal}) = ${discount}`);
+        } else {
+          console.warn('⚠️ Unknown voucher type:', activeVoucher.type);
+          voucherValid = false;
+          validationMessage = 'Tipe voucher tidak valid';
+        }
+        
+        // Batasi dengan max_diskon jika ada
+        if (activeVoucher.max_diskon && discount > activeVoucher.max_diskon) {
+          console.log(`📉 Capping discount from ${discount} to max ${activeVoucher.max_diskon}`);
+          discount = activeVoucher.max_diskon;
+        }
+        
+        // Pastikan tidak negatif
+        discount = Math.max(0, discount);
+        console.log('✅ Final discount:', discount);
+        
+        // Jika diskon 0 tapi voucher valid, mungkin ada issue
+        if (discount === 0 && voucherValid) {
+          console.warn('⚠️ Valid voucher but discount is 0. Check voucher value.');
+        }
+      } else {
+        // Auto-remove voucher jika tidak valid
+        console.log('⚠️ Auto-removing invalid voucher:', validationMessage);
+        setTimeout(() => setActiveVoucher(null), 100);
+      }
+    } else {
+      console.log('ℹ️ No active voucher');
+    }
+    
+    const total = Math.max(0, subtotal - discount);
+    
+    // Hitung booking
+    const tablePrice = bookingItem ? Number(bookingItem.price) || 0 : 0;
+    const isBookingFree = bookingItem && subtotal >= 25000;
+    const tablePriceFinal = isBookingFree ? 0 : tablePrice;
+    const totalBayar = total + tablePriceFinal;
+    
+    // Get total items
+    const getTotalItems = () => cartItems.reduce((sum, item) => sum + (item.qty || 1), 0);
+    
+    return {
+      foodItems,
+      bookingItem,
+      subtotal,
+      discount,
+      total,
+      tablePriceFinal,
+      isBookingFree,
+      totalBayar,
+      getTotalItems,
+      voucherValid,
+      validationMessage
+    };
+  }, [cartItems, activeVoucher]);
+
+  // ✅ Debug log untuk memantau perubahan
+  useEffect(() => {
+    console.log('===================================');
+    console.log('🛒 CART CONTEXT STATE UPDATE');
+    console.log('===================================');
+    console.log('Cart items:', cartItems.length);
+    console.log('Active voucher code:', activeVoucher?.code || 'None');
+    if (activeVoucher) {
+      console.log('Voucher details:', {
+        type: activeVoucher.type,
+        value: activeVoucher.value,
+        min: activeVoucher.min_pembelian,
+        max: activeVoucher.max_diskon,
+        status: activeVoucher.status,
+        expired: activeVoucher.berlaku_hingga,
+        valid: calculations.voucherValid
+      });
+    }
+    console.log('Subtotal:', calculations.subtotal);
+    console.log('Discount:', calculations.discount);
+    console.log('Total:', calculations.total);
+    console.log('Total bayar:', calculations.totalBayar);
+    console.log('Voucher valid:', calculations.voucherValid);
+    if (!calculations.voucherValid && calculations.validationMessage) {
+      console.log('Validation message:', calculations.validationMessage);
+    }
+    console.log('===================================');
+  }, [cartItems, activeVoucher, calculations]);
 
   return (
     <CartContext.Provider value={{
-      // State
       cart: cartItems,
-      cartItems,
-      isSidebarOpen,
-      setIsSidebarOpen,
       activeVoucher,
-      setActiveVoucher,
-      
-      // Actions
+      subtotal: calculations.subtotal,
+      discount: calculations.discount,
+      total: calculations.total,
+      totalBayar: calculations.totalBayar,
+      tablePriceFinal: calculations.tablePriceFinal,
+      isBookingFree: calculations.isBookingFree,
+      voucherValid: calculations.voucherValid,
+      validationMessage: calculations.validationMessage,
       addToCart,
       decreaseQty,
       removeFromCart,
       clearCart,
-      updateQuantity,
-      addBookingToCart,
       applyVoucher,
       removeVoucher,
-      
-      // Calculations
-      subtotal: calculateSubtotal,
-      discount: discountAmount,
-      total: calculateTotal,
-      getTotalItems,
-      
-      // Helper functions for backend
-      getCartItemsForBackend,
-      getBookingId
+      getTotalItems: calculations.getTotalItems
     }}>
       {children}
     </CartContext.Provider>
@@ -340,8 +342,6 @@ export const CartProvider = ({ children }) => {
 
 export const useCart = () => {
   const context = useContext(CartContext);
-  if (!context) {
-    throw new Error('useCart must be used within CartProvider');
-  }
+  if (!context) throw new Error('useCart must be inside CartProvider');
   return context;
 };

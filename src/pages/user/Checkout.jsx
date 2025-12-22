@@ -1,11 +1,13 @@
 // src/pages/user/Checkout.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCart } from '../../context/CartContext'; 
 import { 
   Trash2, CreditCard, Upload, ArrowLeft, Ticket, CheckCircle, 
   Store, Banknote, Utensils, ShoppingBag, AlertTriangle, Lock, 
   PartyPopper, Plus, Minus, Calendar, Clock, Users, Home, 
-  Loader2, AlertCircle, ShoppingCart, Info, Shield, Check
+  Loader2, AlertCircle, ShoppingCart, Info, Shield, Check, 
+  ChevronDown, ChevronUp, QrCode, Eye, EyeOff, Copy, XCircle,
+  Percent, DollarSign
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,9 +18,21 @@ import {
   checkVoucher 
 } from '../../api/orderApi';
 
+// QR Generator client-side (tanpa dependency)
+const QRCode = ({ value, size = 200 }) => {
+  const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}`;
+  return <img src={url} alt="QRIS" className="w-full h-full object-contain" />;
+};
+
+// Generate QRIS content (EMVCo static — ganti MID sesuai merchant Anda)
+const generateQRIS = (amount) => {
+  const mid = "0012345678901234"; // 🔑 GANTI DENGAN MID ANDA
+  const amountStr = Math.round(amount).toString();
+  return `00020101021129370016ID.CO.QRIS.WWW0115${mid}5204531153033605802ID5914ARJES CAFE6013JAKARTA62430325ARJES${Date.now().toString().slice(-6)}540${amountStr.length}${amountStr}6304`;
+};
+
 const Checkout = () => {
   const navigate = useNavigate();
-  
   const { 
     cart, 
     addToCart,      
@@ -31,7 +45,12 @@ const Checkout = () => {
     getTotalItems,
     subtotal,
     discount,
-    total
+    total,
+    totalBayar,
+    tablePriceFinal,
+    isBookingFree,
+    voucherValid,
+    validationMessage
   } = useCart();
 
   const [paymentMethod, setPaymentMethod] = useState('qris'); 
@@ -45,6 +64,9 @@ const Checkout = () => {
     nama_penerima: '',
     catatan: ''
   });
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showQRIS, setShowQRIS] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Cek apakah ada booking di cart
   const bookingItem = cart.find(item => item.category === 'booking');
@@ -53,98 +75,113 @@ const Checkout = () => {
 
   // Hitung statistik
   const totalItems = getTotalItems();
-  const totalFoodItems = foodItems.reduce((sum, item) => sum + item.qty, 0);
+  const totalFoodItems = foodItems.reduce((sum, item) => sum + (item.qty || 1), 0);
 
   // Aturan untuk booking gratis
-  const minOrderThreshold = 25000; // Minimal 25k untuk booking gratis
-  const isBookingFree = hasBooking && subtotal >= minOrderThreshold;
+  const minOrderThreshold = 25000;
+  const isBookingFreeActual = hasBooking && subtotal >= minOrderThreshold;
   const kurangJajan = minOrderThreshold - subtotal;
 
   // Hitung biaya meja final
   const tablePriceOriginal = bookingItem ? bookingItem.price : 0;
-  const tablePriceFinal = isBookingFree ? 0 : tablePriceOriginal;
+  const tablePriceFinalActual = isBookingFreeActual ? 0 : tablePriceOriginal;
 
-  // Total final yang harus dibayar
-  const totalBayar = total + tablePriceFinal;
+  // ✅ QRIS content — update real-time
+  const qrContent = useMemo(() => 
+    totalBayar > 0 ? generateQRIS(totalBayar) : '',
+    [totalBayar]
+  );
 
   // === API FUNCTIONS ===
-  const handleCheckVoucher = async (code) => {
-    if (!code.trim()) return;
+// Di Checkout.jsx - Perbaiki handleCheckVoucher
+const handleCheckVoucher = async (code) => {
+  if (!code.trim()) {
+    setVoucherError('Masukkan kode voucher');
+    return;
+  }
+  
+  setCheckingVoucher(true);
+  setVoucherError('');
+  
+  console.log('🔍 Checking voucher:', code);
+  
+  try {
+    const response = await checkVoucher(code);
+    console.log('✅ Voucher API response:', response.data);
     
-    setCheckingVoucher(true);
-    setVoucherError('');
-    
-    try {
-      const response = await checkVoucher(code);
+    if (response.data.valid) {
+      const voucher = response.data.voucher;
       
-      if (response.data.valid) {
-        const voucher = response.data.voucher;
-        
-        // Convert format dari backend ke frontend
-        const voucherData = {
-          code: voucher.kode,
-          name: voucher.nama || voucher.kode,
-          type: voucher.tipe_diskon === 'persen' ? 'percentage' : 'fixed',
-          value: voucher.tipe_diskon === 'persen' 
-            ? voucher.diskon_persen 
-            : voucher.diskon_nominal,
-          min_pembelian: voucher.minimum_order || 0,
-          max_diskon: voucher.maksimum_diskon || null,
-          berlaku_hingga: voucher.expired_at,
-          status: voucher.status,
-          limit_penggunaan: voucher.limit_penggunaan,
-          penggunaan_sekarang: voucher.penggunaan_sekarang || 0
-        };
-        
-        // Validasi minimal pembelian
-        if (voucherData.min_pembelian > 0 && subtotal < voucherData.min_pembelian) {
-          setVoucherError(`Minimal pembelian Rp ${parseFloat(voucherData.min_pembelian).toLocaleString('id-ID')} untuk menggunakan voucher ini.`);
-          return;
-        }
-        
-        // Validasi tanggal berlaku
-        if (voucherData.berlaku_hingga) {
-          const expireDate = new Date(voucherData.berlaku_hingga);
-          const today = new Date();
-          if (expireDate < today) {
-            setVoucherError('Voucher sudah kadaluarsa!');
-            return;
-          }
-        }
-        
-        // Validasi status
-        if (voucherData.status !== 'aktif') {
-          setVoucherError('Voucher tidak aktif!');
-          return;
-        }
-        
-        // Validasi limit penggunaan
-        if (voucherData.limit_penggunaan > 0 && 
-            voucherData.penggunaan_sekarang >= voucherData.limit_penggunaan) {
-          setVoucherError('Voucher sudah habis digunakan!');
-          return;
-        }
-        
-        // Jika semua validasi lolos, apply voucher
-        applyVoucher(voucherData);
+      // ✅ FIX: Debug raw voucher data dari backend
+      console.log('📦 RAW VOUCHER FROM BACKEND:', {
+        id: voucher.id,
+        kode: voucher.kode,
+        nama: voucher.nama,
+        tipe_diskon: voucher.tipe_diskon,
+        diskon_persen: voucher.diskon_persen,
+        diskon_nominal: voucher.diskon_nominal,
+        minimum_order: voucher.minimum_order,
+        maksimum_diskon: voucher.maksimum_diskon,
+        status: voucher.status,
+        expired_at: voucher.expired_at
+      });
+      
+      // ✅ FIX: Kirim data voucher MENTAH ke applyVoucher
+      // Biarkan applyVoucher yang melakukan normalisasi
+      const result = applyVoucher(voucher);
+      
+      if (result.success) {
+        console.log('🎉 Voucher applied successfully:', result.voucher);
         setInputVoucher('');
         setVoucherError('');
+        
+        // Tampilkan notifikasi sukses
+        setTimeout(() => {
+          if (result.voucher.type === 'percentage') {
+            alert(`✅ Voucher "${result.voucher.code}" berhasil diterapkan!\nDiskon: ${result.voucher.value}%`);
+          } else {
+            alert(`✅ Voucher "${result.voucher.code}" berhasil diterapkan!\nDiskon: Rp${result.voucher.value.toLocaleString('id-ID')}`);
+          }
+        }, 100);
       } else {
-        setVoucherError(response.data.message || 'Voucher tidak valid');
+        setVoucherError(result.message || 'Gagal menerapkan voucher');
       }
-    } catch (error) {
-      console.error('Error checking voucher:', error);
-      if (error.response?.status === 404) {
-        setVoucherError('Voucher tidak ditemukan!');
-      } else if (error.response?.status === 400) {
-        setVoucherError(error.response.data.message || 'Voucher tidak valid!');
-      } else {
-        setVoucherError('Gagal memeriksa voucher. Coba lagi nanti.');
-      }
-    } finally {
-      setCheckingVoucher(false);
+      
+    } else {
+      const errorMsg = response.data.message || 'Voucher tidak valid';
+      setVoucherError(errorMsg);
+      console.log('❌ Voucher invalid:', errorMsg);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error checking voucher:', error);
+    console.error('Error details:', {
+      response: error.response?.data,
+      status: error.response?.status,
+      message: error.message
+    });
+    
+    let errorMsg = 'Gagal memeriksa voucher';
+    if (error.response) {
+      if (error.response.status === 404) {
+        errorMsg = 'Voucher tidak ditemukan';
+      } else if (error.response.status === 400) {
+        errorMsg = error.response.data.message || 'Voucher tidak valid';
+      } else if (error.response.status === 422) {
+        const errors = error.response.data.errors;
+        if (errors && errors.kode) {
+          errorMsg = errors.kode[0];
+        } else {
+          errorMsg = 'Format voucher tidak valid';
+        }
+      }
+    }
+    
+    setVoucherError(errorMsg);
+    removeVoucher(); // Pastikan voucher dihapus jika error
+  } finally {
+    setCheckingVoucher(false);
+  }
+};
 
   // --- ATURAN PEMBAYARAN ---
   useEffect(() => {
@@ -153,6 +190,22 @@ const Checkout = () => {
       setDiningOption('dine_in'); 
     }
   }, [hasBooking]);
+
+  // ✅ Validasi voucher real-time
+  useEffect(() => {
+    if (activeVoucher && !voucherValid && validationMessage) {
+      console.log('⚠️ Voucher validation issue:', validationMessage);
+      setVoucherError(validationMessage);
+      
+      // Auto-remove voucher setelah beberapa detik
+      const timer = setTimeout(() => {
+        removeVoucher();
+        setVoucherError('');
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [activeVoucher, voucherValid, validationMessage, removeVoucher]);
 
   // Format price helper
   const formatPrice = (price) => {
@@ -177,30 +230,25 @@ const Checkout = () => {
     // Validasi login
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
-    
     if (!token || !user) {
       alert("❌ Silakan login terlebih dahulu!");
       navigate('/login');
       return;
     }
-
     if (cart.length === 0) {
       alert("Keranjang kosong!");
       return;
     }
-
     // Validasi untuk pickup
     if (diningOption === 'pickup' && !pickupData.nama_penerima.trim()) {
       alert("Mohon isi nama penerima untuk pickup!");
       return;
     }
-
     // Validasi bukti transfer untuk QRIS
     if (paymentMethod === 'qris' && totalBayar > 0 && !buktiTransfer) {
       alert("⚠️ Mohon upload bukti pembayaran terlebih dahulu!");
       return;
     }
-
     // Validasi item harus memiliki menu_id
     const invalidItems = foodItems.filter(item => !item.menu_id && !item.id);
     if (invalidItems.length > 0) {
@@ -208,20 +256,16 @@ const Checkout = () => {
       return;
     }
 
-    // Validasi tambahan untuk voucher
-    if (activeVoucher?.code && typeof activeVoucher.code !== 'string') {
-      alert("❌ Kode voucher tidak valid!");
-      return;
-    }
-
     setLoading(true);
-
     try {
       // Debug: log data yang akan dikirim
       console.log("=== DEBUG ORDER DATA ===");
       console.log("Active voucher:", activeVoucher);
       console.log("Voucher code:", activeVoucher?.code);
-      console.log("Type of voucher code:", typeof activeVoucher?.code);
+      console.log("Subtotal:", subtotal);
+      console.log("Discount:", discount);
+      console.log("Total:", total);
+      console.log("Total bayar:", totalBayar);
 
       // Siapkan data order sesuai dengan format backend
       const orderData = {
@@ -235,6 +279,7 @@ const Checkout = () => {
       // Hanya tambahkan voucher_code jika ada dan berupa string
       if (activeVoucher?.code && typeof activeVoucher.code === 'string') {
         orderData.voucher_code = activeVoucher.code;
+        console.log("✅ Adding voucher code to order:", activeVoucher.code);
       }
 
       // Hanya tambahkan booking_id jika ada
@@ -245,7 +290,6 @@ const Checkout = () => {
       console.log("Full order data to send:", orderData);
 
       let response;
-      
       if (diningOption === 'pickup') {
         // Order pickup dengan format yang sesuai controller
         const pickupOrderData = {
@@ -253,7 +297,6 @@ const Checkout = () => {
           nama_penerima: pickupData.nama_penerima.trim(),
           catatan: pickupData.catatan?.trim() || ''
         };
-        
         console.log("Pickup order data:", pickupOrderData);
         response = await createPickupOrder(pickupOrderData);
       } else {
@@ -278,49 +321,41 @@ const Checkout = () => {
       }
 
       // Tampilkan notifikasi sukses berdasarkan response
-      const totalAmount = orderResponse.total;
-      const discountAmount = orderResponse.discount_amount || 0;
+      const totalAmount = orderResponse.total || totalBayar;
+      const discountAmount = orderResponse.discount_amount || discount || 0;
       const voucherUsed = orderResponse.voucher_id ? true : false;
 
       let successMessage = `🎉 Pesanan Berhasil!`;
       successMessage += `\nID Order: ${orderId}`;
       successMessage += `\nTotal: ${formatPrice(totalAmount)}`;
-      
-      if (voucherUsed) {
+      if (voucherUsed || discount > 0) {
         successMessage += `\nDiskon: -${formatPrice(discountAmount)}`;
       }
-      
       if (diningOption === 'pickup') {
         successMessage += `\nNama Penerima: ${pickupData.nama_penerima}`;
         if (pickupData.catatan) {
           successMessage += `\nCatatan: ${pickupData.catatan}`;
         }
-        successMessage += `\n\nSilakan tunggu notifikasi ketika pesanan siap diambil.`;
+        successMessage += `\nSilakan tunggu notifikasi ketika pesanan siap diambil.`;
       } else {
-        successMessage += `\n\nSilakan tunjukkan ID order ke kasir.`;
+        successMessage += `\nSilakan tunjukkan ID order ke kasir.`;
       }
 
       alert(successMessage);
-      
+
       // Clear cart dan redirect
       clearCart();
       navigate('/user/orders');
-
     } catch (error) {
       console.error("Gagal membuat order:", error);
-      
       let errorMessage = "❌ Gagal membuat pesanan.";
-      
       if (error.response) {
         console.log("Error response data:", error.response.data);
         console.log("Error response status:", error.response.status);
-        
         if (error.response.status === 422) {
           const errorData = error.response.data;
           console.error("Validation errors:", errorData);
-          
           errorMessage = "❌ Validasi gagal:\n";
-          
           if (errorData.errors) {
             Object.entries(errorData.errors).forEach(([field, messages]) => {
               errorMessage += `- ${field}: ${messages.join(', ')}\n`;
@@ -348,12 +383,59 @@ const Checkout = () => {
       } else if (error.message) {
         errorMessage += "\n" + error.message;
       }
-      
       alert(errorMessage);
     } finally {
       setLoading(false);
     }
   };
+
+  // ✅ Debug component untuk testing
+  const DebugPanel = () => (
+    <div className="mt-4 p-4 bg-gray-800/50 border border-gray-700 rounded-xl">
+      <p className="text-sm font-bold text-yellow-400 mb-2">🔧 DEBUG PANEL</p>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-gray-400">Subtotal:</span>
+          <span className="ml-2 font-bold">Rp{subtotal.toLocaleString('id-ID')}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">Discount:</span>
+          <span className="ml-2 font-bold text-green-400">Rp{discount.toLocaleString('id-ID')}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">Total:</span>
+          <span className="ml-2 font-bold">Rp{total.toLocaleString('id-ID')}</span>
+        </div>
+        <div>
+          <span className="text-gray-400">Voucher:</span>
+          <span className="ml-2 font-bold">{activeVoucher?.code || 'None'}</span>
+        </div>
+        <div className="col-span-2">
+          <span className="text-gray-400">Voucher Type:</span>
+          <span className="ml-2 font-bold">{activeVoucher?.type || '-'}</span>
+          {activeVoucher && (
+            <>
+              <span className="ml-4 text-gray-400">Value:</span>
+              <span className="ml-2 font-bold">
+                {activeVoucher.type === 'percentage' ? `${activeVoucher.value}%` : `Rp${activeVoucher.value.toLocaleString('id-ID')}`}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={() => {
+          console.log('=== MANUAL DEBUG ===');
+          console.log('Cart:', cart);
+          console.log('Active Voucher:', activeVoucher);
+          console.log('Calculations:', { subtotal, discount, total, totalBayar });
+        }}
+        className="mt-2 text-xs px-3 py-1 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30"
+      >
+        Log to Console
+      </button>
+    </div>
+  );
 
   if (cart.length === 0) {
     return (
@@ -386,7 +468,6 @@ const Checkout = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0F1F18] to-[#1a2d25] text-white pt-24 pb-12 px-4">
       <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-8">
-        
         {/* === KOLOM KIRI: DAFTAR ITEM === */}
         <div className="md:col-span-2 space-y-6">
           <div className="flex items-center gap-4 mb-4">
@@ -446,7 +527,6 @@ const Checkout = () => {
             {cart.map((item) => {
               const isBooking = item.category === 'booking';
               const itemTotal = (item.price || 0) * (item.qty || 1);
-              
               return (
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
@@ -473,7 +553,7 @@ const Checkout = () => {
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Info */}
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">
@@ -490,7 +570,7 @@ const Checkout = () => {
                             )}
                           </div>
                           <h3 className="font-bold text-white text-lg mb-1">{item.name}</h3>
-                          
+
                           {/* Info tambahan untuk booking */}
                           {isBooking && item.details && (
                             <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-400">
@@ -516,17 +596,17 @@ const Checkout = () => {
                               )}
                             </div>
                           )}
-                          
+
                           {/* Deskripsi untuk menu */}
                           {!isBooking && item.desc && (
                             <p className="text-sm text-gray-400 mt-1 line-clamp-1">{item.desc}</p>
                           )}
                         </div>
-                        
+
                         {/* Harga & Actions */}
                         <div className="text-right ml-2">
                           <div className="mb-2">
-                            {isBooking && isBookingFree ? (
+                            {isBooking && isBookingFreeActual ? (
                               <>
                                 <span className="block text-xs text-gray-500 line-through">
                                   {formatPrice(item.price)}
@@ -542,7 +622,7 @@ const Checkout = () => {
                               {formatPrice(item.price)} × {item.qty}
                             </p>
                           </div>
-                          
+
                           {/* Quantity controls untuk menu */}
                           {!isBooking && (
                             <div className="flex items-center justify-end gap-2">
@@ -578,6 +658,9 @@ const Checkout = () => {
               );
             })}
           </div>
+          
+          {/* DEBUG PANEL (Hanya di development) */}
+          {process.env.NODE_ENV === 'development' && <DebugPanel />}
         </div>
 
         {/* === KOLOM KANAN: OPSI & BAYAR === */}
@@ -613,7 +696,6 @@ const Checkout = () => {
                   </div>
                 )}
               </motion.button>
-              
               <motion.button 
                 whileTap={{ scale: 0.95 }}
                 onClick={() => !hasBooking && setDiningOption('pickup')}
@@ -635,14 +717,13 @@ const Checkout = () => {
                 )}
               </motion.button>
             </div>
-            
             {hasBooking && (
               <p className="text-xs text-gray-400 mt-3 text-center flex items-center justify-center gap-1">
                 <Info size={12} />
                 Booking meja wajib Dine-In
               </p>
             )}
-            
+
             {/* Form untuk pickup */}
             <AnimatePresence>
               {diningOption === 'pickup' && (
@@ -680,7 +761,7 @@ const Checkout = () => {
             </AnimatePresence>
           </motion.div>
 
-          {/* VOUCHER */}
+          {/* VOUCHER SECTION - DIPERBAIKI */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -700,28 +781,45 @@ const Checkout = () => {
                   exit={{ opacity: 0, y: -10 }}
                   className="bg-gradient-to-r from-green-500/10 to-green-600/10 border border-green-500/30 p-4 rounded-xl"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 text-green-400">
                       <CheckCircle size={16} />
-                      <span className="font-bold">{activeVoucher.name}</span>
+                      <div>
+                        <span className="font-bold">{activeVoucher.name}</span>
+                        <p className="text-xs text-green-400/80">
+                          {activeVoucher.type === 'percentage' 
+                            ? `Diskon ${activeVoucher.value}%` 
+                            : `Diskon Rp${activeVoucher.value.toLocaleString('id-ID')}`
+                          }
+                        </p>
+                      </div>
                     </div>
                     <button 
                       onClick={removeVoucher}
-                      className="text-xs text-gray-400 hover:text-white transition-colors"
+                      className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 hover:bg-white/10 rounded"
                     >
                       Hapus
                     </button>
                   </div>
-                  <p className="text-xs text-green-400/80 mt-1">
-                    {activeVoucher.type === 'percentage' 
-                      ? `Diskon ${activeVoucher.value}%` 
-                      : `Diskon ${formatPrice(activeVoucher.value)}`}
-                  </p>
+                  
+                  {/* Tampilkan info penggunaan */}
                   {activeVoucher.min_pembelian > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      Min. pembelian: {formatPrice(activeVoucher.min_pembelian)}
+                    <p className="text-xs text-gray-400">
+                      Min. pembelian: Rp{activeVoucher.min_pembelian.toLocaleString('id-ID')}
                     </p>
                   )}
+                  
+                  {/* Tampilkan info diskon saat ini */}
+                  <div className="mt-2 pt-2 border-t border-white/10 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Subtotal saat ini:</span>
+                      <span>Rp{subtotal.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between text-green-400">
+                      <span>Diskon diterapkan:</span>
+                      <span className="font-bold">-Rp{discount.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
                 </motion.div>
               ) : (
                 <div className="space-y-2">
@@ -738,10 +836,10 @@ const Checkout = () => {
                       whileTap={{ scale: 0.95 }}
                       onClick={() => handleCheckVoucher(inputVoucher)}
                       disabled={checkingVoucher || !inputVoucher.trim()}
-                      className="bg-white/10 text-white px-4 py-3 rounded-xl font-bold hover:bg-gradient-to-r hover:from-[#D4AF37] hover:to-[#F4D03F] hover:text-[#0F1F18] transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-gradient-to-r from-[#D4AF37] to-[#F4D03F] text-[#0F1F18] px-4 py-3 rounded-xl font-bold hover:from-white hover:to-gray-200 transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed min-w-[80px]"
                     >
                       {checkingVoucher ? (
-                        <Loader2 size={18} className="animate-spin" />
+                        <Loader2 size={18} className="animate-spin mx-auto" />
                       ) : 'Pakai'}
                     </motion.button>
                   </div>
@@ -754,12 +852,15 @@ const Checkout = () => {
                       <AlertCircle size={12} /> {voucherError}
                     </motion.p>
                   )}
+                  <p className="text-xs text-gray-500">
+                    Contoh: DISKON25K, PROMO50, dll.
+                  </p>
                 </div>
               )}
             </AnimatePresence>
           </motion.div>
 
-          {/* RINGKASAN PEMBAYARAN */}
+          {/* RINGKASAN PEMBAYARAN - DIPERBAIKI */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -770,40 +871,68 @@ const Checkout = () => {
               <CreditCard size={20} className="text-[#D4AF37]" /> 
               Ringkasan Pembayaran
             </h3>
-            
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-gray-400">
                 <span>Subtotal ({totalFoodItems} item)</span>
-                <span>{formatPrice(subtotal)}</span>
+                <span>Rp{subtotal.toLocaleString('id-ID')}</span>
               </div>
               
               {hasBooking && (
                 <div className="flex justify-between text-gray-400">
                   <span>Biaya Meja</span>
-                  <span className={isBookingFree ? "text-green-400" : ""}>
-                    {isBookingFree ? (
+                  <span className={isBookingFreeActual ? "text-green-400" : ""}>
+                    {isBookingFreeActual ? (
                       <span className="flex items-center gap-1">
                         <Check size={14} /> GRATIS
                       </span>
                     ) : (
-                      formatPrice(tablePriceOriginal)
+                      `Rp${tablePriceOriginal.toLocaleString('id-ID')}`
                     )}
                   </span>
                 </div>
               )}
               
+              {/* ✅ TAMPILKAN DISKON DENGAN BENAR */}
               {activeVoucher && discount > 0 && (
-                <div className="flex justify-between text-green-400">
-                  <span>Diskon Voucher</span>
-                  <span>-{formatPrice(discount)}</span>
+                <div className="flex justify-between items-center text-green-400">
+                  <div className="flex items-center gap-1">
+                    {activeVoucher.type === 'percentage' ? (
+                      <Percent size={12} />
+                    ) : (
+                      <DollarSign size={12} />
+                    )}
+                    <span>Diskon ({activeVoucher.code})</span>
+                  </div>
+                  <span className="font-bold">-Rp{discount.toLocaleString('id-ID')}</span>
                 </div>
               )}
               
               <div className="border-t border-white/10 pt-3 mt-3">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total Bayar</span>
-                  <span className="text-[#D4AF37]">{formatPrice(totalBayar)}</span>
+                  <span className="text-[#D4AF37]">Rp{totalBayar.toLocaleString('id-ID')}</span>
                 </div>
+                
+                {/* ✅ BREAKDOWN JIKA ADA VOUCHER */}
+                {activeVoucher && discount > 0 && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      <span className="text-right text-gray-400">Subtotal:</span>
+                      <span className="text-right">Rp{subtotal.toLocaleString('id-ID')}</span>
+                      <span className="text-right text-gray-400">Diskon:</span>
+                      <span className="text-right text-green-400">-Rp{discount.toLocaleString('id-ID')}</span>
+                      {hasBooking && (
+                        <>
+                          <span className="text-right text-gray-400">Biaya meja:</span>
+                          <span className="text-right">{isBookingFreeActual ? 'GRATIS' : `Rp${tablePriceFinal.toLocaleString('id-ID')}`}</span>
+                        </>
+                      )}
+                      <span className="text-right text-gray-400 font-bold">Total:</span>
+                      <span className="text-right font-bold">Rp{totalBayar.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                )}
+                
                 {totalBayar === 0 && (
                   <p className="text-xs text-green-400 mt-2 flex items-center gap-1">
                     <Shield size={12} /> Pesanan ini gratis!
@@ -811,6 +940,71 @@ const Checkout = () => {
                 )}
               </div>
             </div>
+
+            {/* QRIS — Otomatis muncul */}
+            {paymentMethod === 'qris' && totalBayar > 0 && (
+              <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-sm flex items-center gap-1">
+                    <QrCode size={16} /> QRIS
+                  </h4>
+                  <button 
+                    onClick={() => setShowQRIS(!showQRIS)}
+                    className="text-xs text-[#D4AF37] flex items-center gap-1"
+                  >
+                    {showQRIS ? <EyeOff size={12} /> : <Eye size={12} />}  
+                    {showQRIS ? 'Sembunyikan' : 'Lihat'}
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {showQRIS && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-4 p-3 bg-black/20 rounded-lg"
+                    >
+                      <div className="aspect-square w-full max-w-xs mx-auto mb-3 bg-white p-2 rounded-lg">
+                        <QRCode value={qrContent} size={200} />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-400 mb-1">Scan untuk bayar</p>
+                        <div className="flex justify-center gap-2">
+                          <code className="text-xs bg-black/40 px-2 py-1 rounded truncate max-w-[180px]">
+                            {qrContent.substring(0, 30)}...
+                          </code>
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(qrContent);
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            }}
+                            className="text-[#D4AF37] hover:text-white"
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </div>
+                        {copied && (
+                          <motion.p 
+                            initial={{ opacity: 0, y: -5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-green-400 text-xs mt-1"
+                          >
+                            ✅ Disalin!
+                          </motion.p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="text-center text-xs text-gray-500">
+                  <p>Bayar tepat <strong>Rp{totalBayar.toLocaleString('id-ID')}</strong></p>
+                  <p className="mt-1">⚠️ Jangan kurang/lebih</p>
+                </div>
+              </div>
+            )}
 
             {/* METODE PEMBAYARAN */}
             {totalBayar > 0 && (
@@ -829,7 +1023,6 @@ const Checkout = () => {
                     <CreditCard size={20} />
                     <span className="text-xs font-bold">QRIS</span>
                   </motion.button>
-                  
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={() => !hasBooking && setPaymentMethod('cash')}
@@ -948,23 +1141,20 @@ const Checkout = () => {
                 </span>
               ) : totalBayar === 0 ? (
                 <span className="flex items-center justify-center gap-2">
-                  <Check size={20} />
-                  Konfirmasi Pesanan Gratis
+                  <Check size={20} /> Konfirmasi Pesanan Gratis
                 </span>
               ) : paymentMethod === 'qris' ? (
                 <span className="flex items-center justify-center gap-2">
-                  <CreditCard size={20} />
-                  Bayar & Konfirmasi
+                  <CreditCard size={20} /> Bayar & Konfirmasi
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  <ShoppingCart size={20} />
-                  Buat Pesanan
+                  <ShoppingCart size={20} /> Buat Pesanan
                 </span>
               )}
               <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
             </motion.button>
-            
+
             {/* Informasi tambahan */}
             <p className="text-xs text-gray-400 text-center mt-4 flex items-center justify-center gap-1">
               <Shield size={12} />

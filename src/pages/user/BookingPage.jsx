@@ -6,12 +6,12 @@ import { mejaAPI } from '../../api/meja';
 import {
   Calendar, Clock, Users, MapPin, CheckCircle, XCircle, AlertCircle,
   Plus, Eye, Coffee, X, ChevronRight, Home, Menu as MenuIcon, 
-  Table2, Loader2, LogOut,
+  Table2, Loader2, LogOut, Info,
   Search, RefreshCw, ChevronLeft, Filter, ShoppingCart, Star
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-// Helper functions (sama seperti sebelumnya)
+// Helper functions
 const formatDate = (dateString) => {
   if (!dateString) return '-';
   const date = new Date(dateString);
@@ -139,16 +139,29 @@ const BookingPage = () => {
     }
   };
 
-  // Fetch available tables
-  const fetchAvailableTables = async () => {
-    try {
-      const response = await mejaAPI.getAvailable();
-      setAvailableTables(response.data || []);
-    } catch (error) {
-      console.error('Error fetching tables:', error);
-      setAvailableTables([]);
-    }
-  };
+  // Fetch available tables based on date/time
+const fetchAvailableTables = async () => {
+  try {
+    // Ambil meja yang statusnya "tersedia" atau "available"
+    const response = await mejaAPI.getAvailable();
+    console.log('Data meja tersedia:', response.data);
+    
+    // Filter meja yang statusnya tersedia
+    const availableTables = response.data.filter(table => 
+      table.status?.toLowerCase() === 'tersedia' || 
+      table.status?.toLowerCase() === 'available' ||
+      table.status === true ||
+      table.available === true ||
+      // Jika tidak ada field status, anggap semua meja tersedia
+      !table.status
+    );
+    
+    setAvailableTables(availableTables);
+  } catch (error) {
+    console.error('Error fetching tables:', error);
+    setAvailableTables([]);
+  }
+};
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -166,7 +179,7 @@ const BookingPage = () => {
       return;
     }
 
-    // Cari meja yang dipilih untuk mendapatkan kapasitasnya
+    // Find selected table to get capacity
     const selectedTable = availableTables.find(table => table.id === formData.meja_id);
     if (!selectedTable) {
       alert('Meja tidak valid');
@@ -174,8 +187,11 @@ const BookingPage = () => {
     }
 
     const bookingData = {
-      ...formData,
-      jumlah_orang: selectedTable.kapasitas
+      meja_id: formData.meja_id,
+      tanggal: formData.tanggal,
+      waktu_selesai: formData.waktu_selesai,
+      jumlah_orang: selectedTable.jumlah_orang,
+      catatan: formData.catatan || ''
     };
 
     try {
@@ -207,22 +223,24 @@ const BookingPage = () => {
     }
   };
 
-  // Set waktu_selesai automatically
-  const handleTanggalChange = (e) => {
-    const tanggal = e.target.value;
-    if (!tanggal) {
-      setFormData(prev => ({ ...prev, tanggal: '', waktu_selesai: '' }));
-      return;
-    }
+  // Set waktu_selesai automatically and fetch available tables
+const handleTanggalChange = (e) => {
+  const tanggal = e.target.value;
+  if (!tanggal) {
+    setFormData(prev => ({ ...prev, tanggal: '', waktu_selesai: '' }));
+    return;
+  }
 
-    const waktuSelesai = addHoursToDate(tanggal, 2);
-    
-    setFormData(prev => ({
-      ...prev,
-      tanggal,
-      waktu_selesai: waktuSelesai
-    }));
-  };
+  const waktuSelesai = addHoursToDate(tanggal, 2);
+  
+  setFormData(prev => ({
+    ...prev,
+    tanggal,
+    waktu_selesai: waktuSelesai
+  }));
+  
+  // TIDAK fetch tables lagi, karena sudah mengambil semua meja
+};
 
   // Get current datetime for min attribute
   const getCurrentDateTime = () => {
@@ -248,7 +266,7 @@ const BookingPage = () => {
   useEffect(() => {
     if (user) {
       fetchMyBookings();
-      fetchAvailableTables();
+      fetchAvailableTables(); // Fetch all available tables initially
     }
   }, [user]);
 
@@ -264,7 +282,8 @@ const BookingPage = () => {
   const filteredBookings = myBookings.filter(booking => {
     const matchesSearch = booking.meja?.nama?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          booking.kode_booking?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         booking.catatan?.toLowerCase().includes(searchTerm.toLowerCase());
+                         booking.catatan?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (booking.meja?.nomor && booking.meja.nomor.toString().includes(searchTerm));
     
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
     
@@ -452,7 +471,7 @@ const BookingPage = () => {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
               <input 
                 type="text" 
-                placeholder="Cari booking..." 
+                placeholder="Cari booking, meja, atau kode..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
@@ -501,7 +520,10 @@ const BookingPage = () => {
         {/* Action Button */}
         <div className="mb-8 text-center">
           <motion.button
-            onClick={() => setShowBookingModal(true)}
+            onClick={() => {
+              setShowBookingModal(true);
+              fetchAvailableTables(); // Fetch all tables when opening modal
+            }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="bg-[#D4AF37] text-[#0F1F18] px-8 py-4 rounded-xl font-bold text-lg hover:bg-white transition-all flex items-center gap-3 mx-auto"
@@ -526,10 +548,21 @@ const BookingPage = () => {
                 <div className="p-6 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-xl font-bold text-white group-hover:text-[#D4AF37] transition-colors line-clamp-1">
-                        {booking.meja?.nama || 'Meja'}
-                      </h3>
-                      <p className="text-gray-400 text-sm mt-1">{booking.kode_booking || `BKJ-${booking.id}`}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Table2 size={18} className="text-[#D4AF37]" />
+                        <h3 className="text-xl font-bold text-white group-hover:text-[#D4AF37] transition-colors">
+                          Meja {booking.meja?.nomor || booking.meja?.nomor_meja || booking.meja?.no_meja || `#${booking.meja_id}`}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-400">{booking.kode_booking}</span>
+                        {booking.meja?.nama && (
+                          <>
+                            <span className="text-gray-600">•</span>
+                            <span className="text-gray-400">{booking.meja.nama}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <StatusBadge status={booking.status} />
                   </div>
@@ -563,9 +596,9 @@ const BookingPage = () => {
                     <div className="bg-white/5 rounded-xl p-4">
                       <div className="flex items-center gap-3 mb-2">
                         <Table2 size={18} className="text-[#D4AF37]" />
-                        <span className="text-gray-400 text-sm">Kapasitas</span>
+                        <span className="text-gray-400 text-sm">Kapasitas Meja</span>
                       </div>
-                      <p className="text-white font-bold text-xl">{booking.meja?.kapasitas || '?'} orang</p>
+                      <p className="text-white font-bold text-xl">{booking.meja?.jumlah_orang || '?'} Orang</p>
                     </div>
                   </div>
 
@@ -634,7 +667,10 @@ const BookingPage = () => {
                   </>
                 ) : (
                   <button 
-                    onClick={() => setShowBookingModal(true)}
+                    onClick={() => {
+                      setShowBookingModal(true);
+                      fetchAvailableTables();
+                    }}
                     className="bg-[#D4AF37] text-[#0F1F18] px-6 py-3 rounded-xl font-bold hover:bg-white transition-all"
                   >
                     <Plus size={18} className="inline mr-2" />
@@ -708,7 +744,13 @@ const BookingPage = () => {
                 <input
                   type="datetime-local"
                   value={formData.waktu_selesai}
-                  onChange={(e) => setFormData(prev => ({ ...prev, waktu_selesai: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, waktu_selesai: e.target.value }));
+                    // Re-fetch available tables if waktu_selesai changes
+                    if (formData.tanggal) {
+                      fetchAvailableTables(formData.tanggal, e.target.value);
+                    }
+                  }}
                   min={formData.tanggal || getCurrentDateTime()}
                   className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#D4AF37]"
                   required
@@ -717,6 +759,19 @@ const BookingPage = () => {
                   Durasi booking: 2 jam (default). Atur sesuai kebutuhan.
                 </p>
               </div>
+              
+              {/* Informasi tanggal booking */}
+              {formData.tanggal && (
+                <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                  <div className="flex items-center gap-2 text-blue-300 text-sm">
+                    <Info size={16} />
+                    <span>
+                      Booking untuk {formatDate(formData.tanggal)} 
+                      pukul {formatTime(formData.tanggal)} - {formatTime(formData.waktu_selesai)}
+                    </span>
+                  </div>
+                </div>
+              )}
               
               <div>
                 <label className="block text-sm text-gray-400 mb-2">
@@ -727,13 +782,19 @@ const BookingPage = () => {
                 </label>
                 
                 {availableTables.length === 0 ? (
-                  <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-                    <div className="flex items-center gap-3 text-red-400">
-                      <XCircle size={20} />
+                  <div className={`p-4 ${formData.tanggal ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-red-500/10 border border-red-500/30'} rounded-xl`}>
+                    <div className={`flex items-center gap-3 ${formData.tanggal ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {formData.tanggal ? <AlertCircle size={20} /> : <XCircle size={20} />}
                       <div>
-                        <p className="font-medium">Tidak ada meja tersedia</p>
-                        <p className="text-sm text-red-400/80 mt-1">
-                          Silakan hubungi admin untuk menambahkan meja.
+                        <p className="font-medium">
+                          {formData.tanggal 
+                            ? 'Tidak ada meja tersedia' 
+                            : 'Pilih tanggal dan waktu terlebih dahulu'}
+                        </p>
+                        <p className="text-sm mt-1">
+                          {formData.tanggal 
+                            ? `Tidak ada meja tersedia pada ${formatDate(formData.tanggal)} pukul ${formatTime(formData.tanggal)}`
+                            : 'Silakan pilih tanggal dan waktu booking terlebih dahulu untuk melihat meja yang tersedia.'}
                         </p>
                       </div>
                     </div>
@@ -752,21 +813,52 @@ const BookingPage = () => {
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <div className="font-medium text-white">{table.nama}</div>
-                            <div className="text-sm text-gray-400 mt-1">
+                            {/* TAMPILKAN NOMOR MEJA */}
+                            <div className="font-medium text-white flex items-center gap-2">
+                              <Table2 size={16} className="text-[#D4AF37]" />
+                              Meja {table.nomor || table.nomor_meja || table.no_meja || `#${table.id}`}
+                            </div>
+                            
+                            <div className="text-sm text-gray-400 mt-1 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Users size={14} />
-                                Kapasitas: {table.kapasitas} orang
+                                <span> {table.tipe_meja} {table.jumlah_orang}</span>
                               </div>
-                              {table.harga_per_jam > 0 && (
-                                <div className="mt-1">
-                                  <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded">
-                                    {formatRp(table.harga_per_jam)}/jam
-                                  </span>
+                              
+                              {/* Tampilkan tipe meja jika ada */}
+                              {table.tipe_meja && (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                  <span>{table.tipe_meja.nama || table.tipe_meja}</span>
+                                </div>
+                              )}
+                              
+                              {/* Tampilkan posisi jika ada */}
+                              {table.posisi && (
+                                <div className="flex items-center gap-2">
+                                  <MapPin size={14} />
+                                  <span>{table.posisi}</span>
+                                </div>
+                              )}
+                              
+                              {/* Tampilkan nama meja jika ada dan berbeda dari nomor */}
+                              {table.nama && table.nama !== table.nomor && (
+                                <div className="text-xs text-gray-500">
+                                  {table.nama}
                                 </div>
                               )}
                             </div>
+                            
+                            {/* Tampilkan harga jika ada */}
+                            {table.harga_per_jam > 0 && (
+                              <div className="mt-2">
+                                <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded">
+                                  {formatRp(table.harga_per_jam)}/jam
+                                </span>
+                              </div>
+                            )}
                           </div>
+                          
                           {formData.meja_id === table.id && (
                             <div className="p-2 bg-[#D4AF37] rounded-lg">
                               <CheckCircle className="text-white" size={20} />
@@ -868,22 +960,37 @@ const BookingPage = () => {
                 </div>
                 <div className="bg-white/5 p-4 rounded-xl">
                   <div className="flex justify-between items-start mb-2">
-                    <div className="font-medium text-white text-lg">{selectedBooking.meja?.nama || 'Meja'}</div>
+                    <div>
+                      <div className="font-medium text-white text-lg">
+                        Meja {selectedBooking.meja?.nomor || selectedBooking.meja?.nomor_meja || selectedBooking.meja?.no_meja || `#${selectedBooking.meja_id}`}
+                      </div>
+                      {selectedBooking.meja?.nama && (
+                        <div className="text-gray-400 text-sm">
+                          {selectedBooking.meja.nama}
+                        </div>
+                      )}
+                    </div>
                     {selectedBooking.meja?.harga_per_jam > 0 && (
                       <div className="text-[#D4AF37] font-bold">
                         {formatRp(selectedBooking.meja.harga_per_jam)}/jam
                       </div>
                     )}
                   </div>
-                  <div className="text-gray-400 text-sm space-y-1">
+                  <div className="text-gray-400 text-sm space-y-2">
                     <div className="flex items-center gap-2">
                       <Users size={14} />
-                      Kapasitas: {selectedBooking.meja?.kapasitas} orang
+                      Kapasitas: {selectedBooking.meja?.jumlah_orang} orang
                     </div>
                     {selectedBooking.meja?.posisi && (
                       <div className="flex items-center gap-2">
                         <MapPin size={14} />
                         {selectedBooking.meja.posisi}
+                      </div>
+                    )}
+                    {selectedBooking.meja?.tipe_meja && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                        {selectedBooking.meja.tipe_meja.nama || selectedBooking.meja.tipe_meja}
                       </div>
                     )}
                   </div>

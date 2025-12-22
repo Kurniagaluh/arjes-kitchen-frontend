@@ -7,7 +7,8 @@ import {
   LayoutDashboard, LogOut, Menu as MenuIcon, X, 
   DollarSign, Tag, Eye, EyeOff,
   Upload, Download, ChevronLeft, ChevronRight,
-  Loader2, AlertCircle
+  Loader2, AlertCircle,
+  Calendar
 } from 'lucide-react';
 import { menuAPI } from '../../api/menu';
 import { useAuth } from '../../context/AuthContext';
@@ -494,6 +495,14 @@ const ManageMenu = () => {
             <Utensils size={18} />
             <span className="text-sm font-medium">Manajemen Menu</span>
           </div>
+
+          <Link 
+            to="/admin/booking" 
+            className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-all group"
+          >
+            <Calendar size={18} />
+            <span className="text-sm font-medium">Manajemen booking</span>
+          </Link>
         </nav>
 
         <div className="p-6 border-t border-white/5 mt-auto">

@@ -138,6 +138,9 @@ const StatCard = ({ title, value, subtext, icon: Icon, color, trend, loading }) 
 const OrderDetailModal = ({ order, onClose }) => {
   if (!order) return null;
 
+  // Base URL untuk gambar (pastikan VITE_API_URL sudah di .env)
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
       <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden w-full max-w-2xl shadow-2xl scale-100 max-h-[90vh] flex flex-col">
@@ -179,8 +182,52 @@ const OrderDetailModal = ({ order, onClose }) => {
                   {order.status}
                 </span>
               </div>
+
+              {/* === PICKUP INFO === */}
+              {order.jenis_order === 'pickup' && (
+                <>
+                  <div className="md:col-span-2">
+                    <hr className="border-white/10 my-3" />
+                    <p className="text-xs text-gray-400">Informasi Pickup</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Nama Penerima</p>
+                    <p className="text-white font-bold">{order.nama_penerima || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Catatan</p>
+                    <p className="text-white italic">{order.catatan || 'Tidak ada catatan'}</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Bukti Pembayaran */}
+          {order.bukti_bayar && (
+            <div className="mb-6 p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
+              <h4 className="text-white font-bold mb-3 flex items-center gap-2">
+                <Upload size={16} />
+                Bukti Pembayaran
+              </h4>
+              <div className="flex flex-col items-center">
+                <img 
+                  src={`${baseUrl}/storage/payment-proofs${order.bukti_bayar}`} 
+                  alt="Bukti Pembayaran"
+                  className="w-full max-w-xs h-48 object-cover rounded-lg border border-white/20 mb-3"
+                  onError={(e) => e.target.src = 'https://via.placeholder.com/300x200?text=Gambar+Tidak+Ditemukan'}
+                />
+                <a 
+                  href={`${baseUrl}/storage/payment-proofs${order.bukti_bayar}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-arjes-gold hover:underline flex items-center gap-1"
+                >
+                  <Eye size={14} /> Lihat gambar penuh
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* Items Pesanan */}
           {order.order_items && order.order_items.length > 0 && (
@@ -236,7 +283,7 @@ const OrderDetailModal = ({ order, onClose }) => {
             </div>
           </div>
 
-          {/* Informasi Tambahan */}
+          {/* Informasi Booking */}
           {order.booking && (
             <div className="mt-6 p-4 bg-blue-500/10 rounded-xl border border-blue-500/20">
               <h4 className="text-white font-bold mb-2 flex items-center gap-2">
@@ -310,7 +357,7 @@ const AdminDashboard = () => {
     todayOrders: 0
   });
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [timeFilter, setTimeFilter] = useState('today'); // today, week, month, year
+  const [timeFilter, setTimeFilter] = useState('today');
 
   useEffect(() => {
     if (activeTab === 'dashboard' || activeTab === 'orders') {
@@ -319,55 +366,109 @@ const AdminDashboard = () => {
   }, [activeTab, timeFilter]);
 
   const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch orders
-      const ordersResponse = await apiClient.get('/orders');
-      if (ordersResponse.data?.data) {
-        const ordersData = Array.isArray(ordersResponse.data.data) 
-          ? ordersResponse.data.data 
-          : [ordersResponse.data.data];
-        setOrders(ordersData);
-        
-        // Calculate stats
-        const totalRevenue = ordersData
-          .filter(o => o.status === 'paid')
-          .reduce((sum, o) => sum + (o.total || 0), 0);
-        
-        const pendingOrders = ordersData
-          .filter(o => o.status === 'pending').length;
-        
-        const today = new Date().toISOString().split('T')[0];
-        const todayRevenue = ordersData
-          .filter(o => o.status === 'paid' && o.created_at?.includes(today))
-          .reduce((sum, o) => sum + (o.total || 0), 0);
-        
-        const todayOrders = ordersData
-          .filter(o => o.created_at?.includes(today)).length;
-        
-        setStats({
-          totalRevenue,
-          totalOrders: ordersData.length,
-          pendingOrders,
-          activeUsers: ordersData.filter(o => o.user_id).length,
-          todayRevenue,
-          todayOrders
-        });
-      }
-      
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+    
+    const ordersResponse = await apiClient.get('/orders');
+    
+    // 🔥 DETEKSI STRUKTUR & EKSTRAK ARRAY ORDER
+    let rawOrders = [];
+
+    // Kasus 1: respons langsung array → [ {...}, {...} ]
+    if (Array.isArray(ordersResponse.data)) {
+      rawOrders = ordersResponse.data;
     }
-  };
+    // Kasus 2: respons { data: [...] }
+    else if (ordersResponse.data && Array.isArray(ordersResponse.data.data)) {
+      rawOrders = ordersResponse.data.data;
+    }
+    // Kasus 3: respons { data: { ... } } (single object)
+    else if (ordersResponse.data && ordersResponse.data.data && typeof ordersResponse.data.data === 'object') {
+      rawOrders = [ordersResponse.data.data];
+    }
+    // Kasus 4: fallback — coba cari di root
+    else if (typeof ordersResponse.data === 'object' && ordersResponse.data !== null) {
+      // Cari properti yang berisi array (misal: orders, data, result)
+      const keys = Object.keys(ordersResponse.data);
+      for (let key of keys) {
+        if (Array.isArray(ordersResponse.data[key])) {
+          rawOrders = ordersResponse.data[key];
+          break;
+        }
+      }
+    }
+
+    console.log('✅ Extracted orders:', rawOrders); // Untuk debug
+
+    // Normalisasi: inject pickup & rename items → order_items
+    const normalizedOrders = rawOrders.map(order => {
+      // Ambil pickup dari order.pickup (jika ada)
+      const pickup = order.pickup || {};
+
+      return {
+        ...order,
+        // 🔁 items → order_items
+        order_items: order.items || order.order_items || [],
+        // 👤 user
+        user: order.user || null,
+        // 🎟️ voucher
+        voucher: order.voucher || null,
+        // 🚚 pickup fields
+        nama_penerima: pickup.nama_penerima || order.nama_penerima || null,
+        catatan: pickup.catatan || order.catatan || null,
+        pickup_status: pickup.status || order.pickup_status || null,
+        // 📸 bukti bayar
+        bukti_bayar: order.bukti_bayar || null,
+      };
+    });
+
+    setOrders(normalizedOrders);
+      
+    // Hitung stats
+    const totalRevenue = normalizedOrders
+      .filter(o => ['paid', 'dibayar'].includes((o.status || '').toLowerCase()))
+      .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    
+    const pendingOrders = normalizedOrders
+      .filter(o => ['pending', 'menunggu'].includes((o.status || '').toLowerCase())).length;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const todayRevenue = normalizedOrders
+      .filter(o => 
+        ['paid', 'dibayar'].includes((o.status || '').toLowerCase()) && 
+        o.created_at?.includes(today)
+      )
+      .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    
+    const todayOrders = normalizedOrders
+      .filter(o => o.created_at?.includes(today)).length;
+    
+    setStats({
+      totalRevenue,
+      totalOrders: normalizedOrders.length,
+      pendingOrders,
+      activeUsers: normalizedOrders.filter(o => o.user_id).length,
+      todayRevenue,
+      todayOrders
+    });
+  } catch (err) {
+    console.error('❌ Error fetching dashboard data:', {
+      message: err.message,
+      response: err.response?.data,
+      status: err.response?.status,
+      url: err.config?.url
+    });
+    alert('Gagal memuat data pesanan. Silakan cek konsol untuk detail error.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleUpdateOrderStatus = async (orderId, status) => {
     try {
       await apiClient.put(`/orders/${orderId}/pay`);
-      alert(`Order berhasil diupdate menjadi ${status}`);
-      fetchDashboardData(); // Refresh data
+      alert(`Order berhasil diupdate menjadi "paid"`);
+      fetchDashboardData();
     } catch (err) {
       alert('Gagal mengupdate status order: ' + (err.response?.data?.message || err.message));
     }
@@ -378,7 +479,7 @@ const AdminDashboard = () => {
       try {
         await apiClient.put(`/orders/${orderId}/cancel`);
         alert('Pesanan berhasil dibatalkan');
-        fetchDashboardData(); // Refresh data
+        fetchDashboardData();
       } catch (err) {
         alert('Gagal membatalkan pesanan: ' + (err.response?.data?.message || err.message));
       }
@@ -391,11 +492,10 @@ const AdminDashboard = () => {
     }
   };
 
-  // Filter orders berdasarkan status
   const filteredOrders = orders.filter(order => {
     if (activeTab === 'orders') return true;
-    if (activeTab === 'pending') return order.status === 'pending';
-    if (activeTab === 'completed') return order.status === 'paid';
+    if (activeTab === 'pending') return ['pending', 'menunggu'].includes(order.status?.toLowerCase());
+    if (activeTab === 'completed') return ['paid', 'dibayar', 'selesai'].includes(order.status?.toLowerCase());
     return true;
   });
 
@@ -454,7 +554,6 @@ const AdminDashboard = () => {
             </button>
           ))}
           
-          {/* Link ke Halaman Manajemen Meja Lengkap */}
           <Link 
             to="/admin/tables"
             className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white hover:translate-x-1 transition-all group"
@@ -462,17 +561,6 @@ const AdminDashboard = () => {
           >
             <Table size={18} />
             <span>Manajemen Meja</span>
-            <ArrowRight size={16} className="ml-auto text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1" />
-          </Link>
-
-          {/* Link ke Halaman Users */}
-          <Link 
-            to="/admin/users"
-            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white hover:translate-x-1 transition-all group"
-            onClick={() => setIsSidebarOpen(false)}
-          >
-            <Users size={18} />
-            <span>Kelola Users</span>
             <ArrowRight size={16} className="ml-auto text-gray-500 group-hover:text-arjes-gold group-hover:translate-x-1" />
           </Link>
         </nav>
@@ -487,7 +575,6 @@ const AdminDashboard = () => {
       {/* --- KONTEN UTAMA --- */}
       <main className="flex-1 overflow-y-auto h-full p-4 md:p-12 relative z-10 scroll-smooth">
         
-        {/* HEADER RESPONSIVE */}
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
@@ -516,10 +603,9 @@ const AdminDashboard = () => {
           </button>
         </div>
 
-        {/* --- 1. TAB DASHBOARD --- */}
+        {/* --- DASHBOARD TAB --- */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in">
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <StatCard 
                 title="Total Pendapatan" 
@@ -529,7 +615,6 @@ const AdminDashboard = () => {
                 color="text-arjes-gold"
                 loading={loading}
               />
-              
               <StatCard 
                 title="Total Pesanan" 
                 value={stats.totalOrders}
@@ -539,7 +624,6 @@ const AdminDashboard = () => {
                 trend={{ value: 12 }}
                 loading={loading}
               />
-              
               <StatCard 
                 title="Pesanan Pending" 
                 value={stats.pendingOrders}
@@ -548,7 +632,6 @@ const AdminDashboard = () => {
                 color="text-yellow-400"
                 loading={loading}
               />
-              
               <StatCard 
                 title="User Aktif" 
                 value={stats.activeUsers}
@@ -557,7 +640,6 @@ const AdminDashboard = () => {
                 color="text-blue-400"
                 loading={loading}
               />
-              
               <StatCard 
                 title="Pendapatan Hari Ini" 
                 value={formatRp(stats.todayRevenue)}
@@ -566,7 +648,6 @@ const AdminDashboard = () => {
                 color="text-green-400"
                 loading={loading}
               />
-              
               <StatCard 
                 title="Rata-rata Pesanan" 
                 value={stats.totalOrders > 0 ? formatRp(stats.totalRevenue / stats.totalOrders) : formatRp(0)}
@@ -608,12 +689,34 @@ const AdminDashboard = () => {
                           <Loader2 className="animate-spin text-arjes-gold mx-auto" size={24} />
                         </td>
                       </tr>
+                    ) : orders.slice(0, 5).length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="p-8 text-center text-gray-500">
+                          <AlertCircle className="mx-auto mb-2" size={32} />
+                          <p>Belum ada pesanan</p>
+                        </td>
+                      </tr>
                     ) : orders.slice(0, 5).map((order) => (
                       <tr key={order.id} className="hover:bg-white/5">
                         <td className="p-4 font-mono text-arjes-gold">#{order.id}</td>
                         <td className="p-4">
                           <p className="text-white font-medium">{order.user?.name || 'Guest'}</p>
                           <p className="text-xs text-gray-400">{order.user?.email || '-'}</p>
+                          
+                          {order.jenis_order === 'pickup' && (
+                            <>
+                              {order.nama_penerima && (
+                                <p className="text-xs text-blue-400 mt-1 font-medium">
+                                  🚶 {order.nama_penerima}
+                                </p>
+                              )}
+                              {order.catatan && (
+                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                                  "{order.catatan}"
+                                </p>
+                              )}
+                            </>
+                          )}
                         </td>
                         <td className="p-4">
                           <p className="text-white">{formatDate(order.created_at)}</p>
@@ -626,12 +729,22 @@ const AdminDashboard = () => {
                           )}
                         </td>
                         <td className="p-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>
-                            {order.status}
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getStatusColor(order.status)}`}>
+                            {getStatusIcon(order.status)}
+                            <span>{order.status}</span>
                           </span>
                         </td>
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2">
+                            {order.bukti_bayar && (
+                              <button
+                                onClick={() => window.open(`${import.meta.env.VITE_API_URL}/storage/payment-proofs/${order.bukti_bayar}`, '_blank')}
+                                className="p-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500 hover:text-white transition-colors"
+                                title="Lihat bukti bayar"
+                              >
+                                <Upload size={16} />
+                              </button>
+                            )}
                             <button
                               onClick={() => setSelectedOrder(order)}
                               className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
@@ -665,10 +778,9 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* --- 2. TAB PESANAN --- */}
+        {/* --- ORDERS TAB --- */}
         {(activeTab === 'orders' || activeTab === 'pending' || activeTab === 'completed') && (
           <div className="space-y-6 animate-in fade-in">
-            {/* Filter Controls */}
             <div className="bg-[#0F1F18] border border-white/10 rounded-2xl p-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -702,17 +814,15 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Orders Table */}
             <div className="bg-[#0F1F18] border border-white/10 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm min-w-[1000px] md:min-w-0">
                   <thead className="bg-black/30 text-xs uppercase font-bold text-gray-500">
                     <tr>
-                      <th className="p-4">ID Pesanan</th>
+                      <th className="p-4">ID</th>
                       <th className="p-4">Customer</th>
                       <th className="p-4">Tanggal</th>
                       <th className="p-4">Jenis</th>
-                      <th className="p-4">Items</th>
                       <th className="p-4">Total</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 text-right">Aksi</th>
@@ -721,32 +831,38 @@ const AdminDashboard = () => {
                   <tbody className="divide-y divide-white/5">
                     {loading ? (
                       <tr>
-                        <td colSpan="8" className="p-8 text-center">
+                        <td colSpan="7" className="p-8 text-center">
                           <Loader2 className="animate-spin text-arjes-gold mx-auto" size={24} />
                           <p className="text-gray-400 mt-2">Memuat data pesanan...</p>
                         </td>
                       </tr>
                     ) : filteredOrders.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="p-8 text-center text-gray-500">
+                        <td colSpan="7" className="p-8 text-center text-gray-500">
                           <AlertCircle className="mx-auto mb-2" size={32} />
                           <p>Tidak ada pesanan yang ditemukan</p>
                         </td>
                       </tr>
                     ) : filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-white/5">
-                        <td className="p-4">
-                          <p className="font-mono text-arjes-gold font-bold">#{order.id}</p>
-                          <p className="text-xs text-gray-400">{order.order_number}</p>
-                        </td>
+                        <td className="p-4 font-mono text-arjes-gold">#{order.id}</td>
                         <td className="p-4">
                           <p className="text-white font-medium">{order.user?.name || 'Guest'}</p>
                           <p className="text-xs text-gray-400">{order.user?.email || '-'}</p>
-                          {order.booking && (
-                            <p className="text-xs text-blue-400 mt-1">
-                              <Calendar size={12} className="inline mr-1" />
-                              Booking meja
-                            </p>
+                          
+                          {order.jenis_order === 'pickup' && (
+                            <>
+                              {order.nama_penerima && (
+                                <p className="text-xs text-blue-400 mt-1 font-medium">
+                                  🚶 {order.nama_penerima}
+                                </p>
+                              )}
+                              {order.catatan && (
+                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                                  "{order.catatan}"
+                                </p>
+                              )}
+                            </>
                           )}
                         </td>
                         <td className="p-4">
@@ -763,27 +879,28 @@ const AdminDashboard = () => {
                           </span>
                         </td>
                         <td className="p-4">
-                          <p className="text-white">
-                            {order.order_items?.length || 0} item
-                          </p>
-                          <p className="text-xs text-gray-400 truncate max-w-xs">
-                            {order.order_items?.map(item => item.menu?.nama).join(', ') || '-'}
-                          </p>
-                        </td>
-                        <td className="p-4">
                           <p className="text-white font-bold">{formatRp(order.total)}</p>
                           {order.discount_amount > 0 && (
-                            <p className="text-xs text-green-400">Diskon: -{formatRp(order.discount_amount)}</p>
+                            <p className="text-xs text-green-400">-{formatRp(order.discount_amount)}</p>
                           )}
                         </td>
                         <td className="p-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getStatusColor(order.status)}`}>
                             {getStatusIcon(order.status)}
-                            <span className="ml-1">{order.status}</span>
+                            <span>{order.status}</span>
                           </span>
                         </td>
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2">
+                            {order.bukti_bayar && (
+                              <button
+                                onClick={() => window.open(`${import.meta.env.VITE_API_URL}/storage/payment-proofs/${order.bukti_bayar}`, '_blank')}
+                                className="p-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500 hover:text-white transition-colors"
+                                title="Lihat bukti bayar"
+                              >
+                                <Upload size={16} />
+                              </button>
+                            )}
                             <button
                               onClick={() => setSelectedOrder(order)}
                               className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors flex items-center gap-2"
@@ -817,7 +934,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* --- 3. TAB MANAJEMEN MENU --- */}
+        {/* TAB LAINNYA (menu, vouchers) tetap sama */}
         {activeTab === 'menu' && (
           <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 animate-in fade-in">
             <div className="bg-white/5 p-6 rounded-full border border-white/5">
@@ -829,7 +946,6 @@ const AdminDashboard = () => {
                 Masuk ke halaman manajemen menu tingkat lanjut untuk menambah, mengedit, atau menghapus menu.
               </p>
             </div>
-            
             <Link 
               to="/admin/menu" 
               className="flex items-center gap-4 rounded-2xl bg-[#0F1F18] p-5 pr-8 shadow-xl border border-arjes-gold/30 hover:border-arjes-gold transition-all group"
@@ -846,18 +962,10 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* --- 4. TAB KELOLA VOUCHER --- */}
-        {activeTab === 'vouchers' && (
-          <VoucherAdminPage />
-        )}
+        {activeTab === 'vouchers' && <VoucherAdminPage />}
 
-        {/* Order Detail Modal */}
-        {selectedOrder && (
-          <OrderDetailModal 
-            order={selectedOrder} 
-            onClose={() => setSelectedOrder(null)} 
-          />
-        )}
+        {/* Modal */}
+        {selectedOrder && <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
       </main>
     </div>
   );

@@ -10,7 +10,8 @@ import {
   ChevronDown, ChevronUp,
   Tag,
   Grid,
-  List
+  List,
+  Calendar
 } from 'lucide-react';
 
 const AdminTables = () => {
@@ -299,6 +300,14 @@ const AdminTables = () => {
           >
             <Users size={18} />
             <span className="text-sm font-medium">Manajemen Menu</span>
+          </Link>
+
+          <Link 
+            to="/admin/booking" 
+            className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-all group"
+          >
+            <Calendar size={18} />
+            <span className="text-sm font-medium">Manajemen booking</span>
           </Link>
         </nav>
 
